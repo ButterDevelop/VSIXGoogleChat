@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+
+    <!-- VSIX settings -->
+    <VSSDKBuildToolsAutoSetup>true</VSSDKBuildToolsAutoSetup>
+    <GeneratePkgDefFile>true</GeneratePkgDefFile>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Resources\google-chat.ico</ApplicationIcon>
+    <CreateVsixContainer>True</CreateVsixContainer>
+    <CopyVsixExtensionLocation>C:\Users\m.lyutikov\projects\VSIXGoogleChat\vsix_content</CopyVsixExtensionLocation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="ChatToolWindowControl.xaml" />
+    <None Remove="Fonts\CascadiaMono.ttf" />
+    <None Remove="VSIXGoogleChatPackage.vsct" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\google-chat.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectCapability Include="CreateVsixContainer" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Community.VisualStudio.Toolkit.17" Version="17.0.551" />
+    <PackageReference Include="Google.Apis.HangoutsChat.v1" Version="1.74.0.4147" />
+    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.5.40034" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="System.Design" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Fonts\CascadiaMono.ttf">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
+  <ItemGroup>
+    <VSCTCompile Include="VSIXGoogleChatPackage.vsct">
+      <ResourceName>Menus.ctmenu</ResourceName>
+      <Generator>VsctGenerator</Generator>
+    </VSCTCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="ChatToolWindowControl.xaml.cs">
+      <DependentUpon>$toolWindowControl$.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

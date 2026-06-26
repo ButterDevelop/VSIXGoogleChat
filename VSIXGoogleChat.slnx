@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="VSIXGoogleChat.csproj">
+    <Deploy />
+  </Project>
+</Solution>

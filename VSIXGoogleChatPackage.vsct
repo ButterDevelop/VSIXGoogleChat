@@ -1,0 +1,92 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<Extern href="stdidcmd.h"/>
+
+	<Extern href="vsshlids.h"/>
+
+	<Commands package="guidVSIXGoogleChatPackage">
+		<Buttons>
+			<Button guid="guidVSIXGoogleChatCmdSet" id="ChatToolWindowCommandId" priority="0x0100" type="Button">
+				<Parent guid="guidSHLMainMenu" id="IDG_VS_TOOLS_EXT_CUST"/>
+				<Icon guid="guidImages" id="bmpPicStrikethrough" />
+				<Strings>
+					<ButtonText>Internal PowerShell</ButtonText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidVSIXGoogleChatCmdSet" id="cmdidToggleStealthMode" priority="0x0101" type="Button">
+				<Parent guid="guidSHLMainMenu" id="IDG_VS_TOOLS_EXT_CUST"/>
+				<Icon guid="guidImages" id="bmpPic1" />
+				<CommandFlag>DynamicVisibility</CommandFlag>
+				<Strings>
+					<ButtonText>Toggle Background PowerShell</ButtonText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidVSIXGoogleChatCmdSet" id="cmdidToggleSilentMode" priority="0x0110" type="Button">
+				<Parent guid="guidSHLMainMenu" id="IDG_VS_TOOLS_EXT_CUST"/>
+				<Icon guid="guidImages" id="bmpPic2" />
+				<Strings>
+					<ButtonText>Toggle Silent PowerShell</ButtonText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidVSIXGoogleChatCmdSet" id="cmdidToggleNotifications" priority="0x0111" type="Button">
+				<Parent guid="guidSHLMainMenu" id="IDG_VS_TOOLS_EXT_CUST"/>
+				<Icon guid="guidImages" id="bmpPicSearch" />
+				<CommandFlag>TextChanges</CommandFlag>
+				<Strings>
+					<ButtonText>Toggle Notifications</ButtonText>
+				</Strings>
+			</Button>
+		</Buttons>
+
+		<Bitmaps>
+			<Bitmap guid="guidImages" href="Resources\ChatToolWindowCommand.png" usedList="bmpPic1, bmpPic2, bmpPicSearch, bmpPicX, bmpPicArrows, bmpPicStrikethrough"/>
+		</Bitmaps>
+	</Commands>
+
+	<KeyBindings>
+		<KeyBinding guid="guidVSIXGoogleChatCmdSet"
+					id="ChatToolWindowCommandId"
+					editor="guidVSStd97"
+					key1="J" mod1="Control Shift" />
+
+		<KeyBinding guid="guidVSIXGoogleChatCmdSet"
+					id="cmdidToggleStealthMode"
+					editor="guidVSStd97"
+					key1="R" mod1="Control Shift" />
+
+		<KeyBinding guid="guidVSIXGoogleChatCmdSet"
+					id="cmdidToggleSilentMode"
+					editor="guidVSStd97"
+					key1="Y" mod1="Control Shift" />
+
+		<KeyBinding guid="guidVSIXGoogleChatCmdSet"
+					id="cmdidToggleNotifications"
+					editor="guidVSStd97"
+					key1="M" mod1="Control Shift" />
+	</KeyBindings>
+
+	<Symbols>
+		<GuidSymbol name="guidVSIXGoogleChatPackage" value="{4a8148b6-3d3e-4ac8-a2ea-362603b4d54a}" />
+
+		<GuidSymbol name="guidVSStd97" value="{5efc7975-14bc-11cf-9b2b-00aa00573819}" />
+
+		<GuidSymbol name="guidVSIXGoogleChatCmdSet"   value="{bd4b2d60-8e79-4bf4-90ed-97e10855211d}">
+			<IDSymbol name="ChatToolWindowCommandId"  value="0x0100" />
+			<IDSymbol name="cmdidToggleStealthMode"   value="0x0101" />
+			<IDSymbol name="cmdidToggleSilentMode"    value="0x0110" />
+			<IDSymbol name="cmdidToggleNotifications" value="0x0111" />
+		</GuidSymbol>
+
+		<GuidSymbol name="guidImages" value="{9b61bed3-e3bf-4152-9c52-ba851c72323b}" >
+			<IDSymbol name="bmpPic1" value="1" />
+			<IDSymbol name="bmpPic2" value="2" />
+			<IDSymbol name="bmpPicSearch" value="3" />
+			<IDSymbol name="bmpPicX" value="4" />
+			<IDSymbol name="bmpPicArrows" value="5" />
+			<IDSymbol name="bmpPicStrikethrough" value="6" />
+		</GuidSymbol>
+	</Symbols>
+</CommandTable>
