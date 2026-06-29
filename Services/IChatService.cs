@@ -11,6 +11,18 @@ namespace VSIXGoogleChat.Services
         Task<List<ChatMessage>> GetMessagesAsync(DateTime? lastMessageTime = null, int maxCount = 50);
 
         Task<System.IO.Stream?> DownloadAttachmentAsync(string resourceName);
+
+        Task<List<ChatSpace>> GetSpacesAsync();
+        void SetCurrentSpace(string spaceId);
+        string GetCurrentSpace();
+        Task<string?> SendMessageWithAttachmentAsync(string text, string filePath, string mimeType);
+        Task<string?> SendMessageWithAttachmentsAsync(string text, List<string> filePaths);
+    }
+
+    public class ChatSpace
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
     }
 
     public class ChatAttachment
@@ -24,9 +36,9 @@ namespace VSIXGoogleChat.Services
 
     public class ChatMessage
     {
-        public string   Id         { get; set; } = "";
-        public string   Text       { get; set; } = "";
-        public string   SenderName { get; set; } = "";
+        public string Id { get; set; } = "";
+        public string Text { get; set; } = "";
+        public string SenderName { get; set; } = "";
         public DateTime CreateTime { get; set; }
         public bool HasAttachments { get; set; }
 

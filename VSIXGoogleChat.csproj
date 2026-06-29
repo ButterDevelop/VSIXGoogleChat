@@ -56,6 +56,15 @@
     <Compile Update="ChatToolWindowControl.xaml.cs">
       <DependentUpon>$toolWindowControl$.xaml</DependentUpon>
     </Compile>
+    <Compile Update="ChatToolWindowControl.Media.cs">
+      <DependentUpon>ChatToolWindowControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="ChatToolWindowControl.Terminal.cs">
+      <DependentUpon>ChatToolWindowControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="ChatToolWindowControl.Input.cs">
+      <DependentUpon>ChatToolWindowControl.xaml</DependentUpon>
+    </Compile>
     <Compile Update="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>

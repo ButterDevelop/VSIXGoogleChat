@@ -13,7 +13,7 @@
     <UserControl.Resources>
         <SolidColorBrush  x:Key="TerminalForeground">#FAFAFA</SolidColorBrush>
     </UserControl.Resources>
-    <Grid Margin="5" PreviewMouseDown="PreviewMouseDown" PreviewKeyDown="Grid_PreviewKeyDown" KeyboardNavigation.TabNavigation="None">
+    <Grid Margin="5" Background="Transparent" PreviewMouseDown="PreviewMouseDown" PreviewKeyDown="Grid_PreviewKeyDown" KeyboardNavigation.TabNavigation="None" AllowDrop="True" PreviewDrop="UserControl_Drop" PreviewDragOver="UserControl_DragOver">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -67,12 +67,96 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0"
-                       Text="PS> " 
-                       VerticalAlignment="Center"
-                       Foreground="{StaticResource TerminalForeground}"
-                       FontSize="12" 
-                       Padding="0"/>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,5,0">
+                <TextBlock x:Name="PromptStartTextBlock" Text="PS " Foreground="{StaticResource TerminalForeground}" FontSize="12" Padding="0" VerticalAlignment="Center"/>
+                <ComboBox x:Name="SpaceSelector" 
+                          Background="Transparent"
+                          Foreground="#5A826B"
+                          BorderThickness="0"
+                          FontSize="12"
+                          Padding="0"
+                          Margin="0"
+                          VerticalAlignment="Center"
+                          SelectionChanged="SpaceSelector_SelectionChanged">
+                    <ComboBox.Style>
+                        <Style TargetType="ComboBox">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ComboBox">
+                                        <Grid>
+                                            <ToggleButton x:Name="ToggleButton" 
+                                                          Focusable="false"
+                                                          IsChecked="{Binding Path=IsDropDownOpen,Mode=TwoWay,RelativeSource={RelativeSource TemplatedParent}}"
+                                                          ClickMode="Press"
+                                                          Cursor="Hand">
+                                                <ToggleButton.Template>
+                                                    <ControlTemplate TargetType="ToggleButton">
+                                                        <Border Background="Transparent" Padding="4,0">
+                                                            <!-- Subtle down arrow -->
+                                                            <Path x:Name="Arrow" Fill="#5A826B" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 3.5 4 L 7 0 Z"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="true">
+                                                                <Setter TargetName="Arrow" Property="Fill" Value="#00CC66"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </ToggleButton.Template>
+                                            </ToggleButton>
+                                            
+                                            <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                                <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="180" MaxHeight="300" Margin="0,2,0,0">
+                                                    <Border x:Name="DropDownBorder" Background="#252526" BorderThickness="1" BorderBrush="#3E3E42" CornerRadius="3">
+                                                        <Border.Effect>
+                                                            <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="6" ShadowDepth="2"/>
+                                                        </Border.Effect>
+                                                    </Border>
+                                                    <ScrollViewer Margin="2" SnapsToDevicePixels="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                                    </ScrollViewer>
+                                                </Grid>
+                                            </Popup>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ComboBox.Style>
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Foreground" Value="#CCCCCC" />
+                            <Setter Property="Padding" Value="6,4" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ComboBoxItem">
+                                        <Border Name="Bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="2">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#333337" />
+                                                <Setter Property="Foreground" Value="#FFFFFF" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#008B8B" />
+                                                <Setter Property="Foreground" Value="#FFFFFF" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" FontSize="12" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock x:Name="PromptEndTextBlock" Text="> " Foreground="{StaticResource TerminalForeground}" FontSize="12" Padding="0" VerticalAlignment="Center"/>
+            </StackPanel>
 
             <TextBox x:Name="VisualTextBox" 
                      Visibility="Collapsed"
@@ -117,8 +201,7 @@
                 CornerRadius="5"
                 x:Name="MediaPanel" 
                 Visibility="Collapsed">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <Grid Margin="10">
+            <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" /> <!-- Header -->
                         <RowDefinition Height="*" />    <!-- Content Area (Image/Text/Audio) -->
@@ -150,11 +233,21 @@
                     <!-- Content area -->
                     <Grid Grid.Row="1">
                         <!-- Image preview -->
-                        <StackPanel x:Name="ImagePreviewContainer" Visibility="Collapsed">
-                            <Border x:Name="ImagePreviewBorder" Background="#111111" CornerRadius="4" MouseDown="ImagePreviewBorder_MouseDown" Cursor="Hand" ToolTip="Click to toggle zoom">
-                                <Image x:Name="PreviewImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <Grid x:Name="ImagePreviewContainer" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border x:Name="ImagePreviewBorder" Grid.Row="0" Background="#111111" CornerRadius="4" MouseDown="ImagePreviewBorder_MouseDown" Cursor="Hand" ToolTip="Click to toggle zoom">
+                                <ScrollViewer x:Name="ImageScrollViewer" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                                    <Image x:Name="PreviewImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality">
+                                        <Image.LayoutTransform>
+                                            <ScaleTransform x:Name="ImageScale" ScaleX="1.0" ScaleY="1.0"/>
+                                        </Image.LayoutTransform>
+                                    </Image>
+                                </ScrollViewer>
                             </Border>
-                            <StackPanel x:Name="ImageNavigationPanel" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+                            <StackPanel x:Name="ImageNavigationPanel" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
                                 <Button x:Name="PrevImageButton" 
                                         Content="[ &lt; ]" 
                                         Background="Transparent" 
@@ -179,7 +272,7 @@
                                         Margin="10,0,0,0"
                                         Click="NextImageButton_Click"/>
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
 
                         <!-- Audio preview (Voice Message) details -->
                         <Grid x:Name="AudioPreviewGrid" Visibility="Collapsed" Margin="0,2,0,5">
@@ -318,7 +411,6 @@
                         </Grid>
                     </Border>
                 </Grid>
-            </ScrollViewer>
         </Border>
     </Grid>
 </UserControl>

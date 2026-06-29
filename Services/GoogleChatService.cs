@@ -4,6 +4,7 @@ using Google.Apis.HangoutsChat.v1.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using System;
+using VSIXGoogleChat;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -16,14 +17,16 @@ namespace VSIXGoogleChat.Services
     public class GoogleChatService : IChatService
     {
         private readonly HangoutsChatService _chatService;
-        private readonly string _spaceId;
+        private string _spaceId;
+        private readonly ChatOptions _options;
 
-        private GoogleChatService(HangoutsChatService chatService, string spaceId)
+        private GoogleChatService(HangoutsChatService chatService, ChatOptions options)
         {
             _chatService = chatService;
-            _spaceId     = spaceId;
+            _options = options;
+            _spaceId = options.SpaceId;
 
-            if (!_spaceId.StartsWith("spaces/"))
+            if (!string.IsNullOrEmpty(_spaceId) && !_spaceId.StartsWith("spaces/"))
                 _spaceId = "spaces/" + _spaceId;
         }
 
@@ -36,10 +39,10 @@ namespace VSIXGoogleChat.Services
             var chatService = new HangoutsChatService(new BaseClientService.Initializer
             {
                 HttpClientInitializer = credential,
-                ApplicationName       = "VSIXGoogleChatExtension"
+                ApplicationName = "VSIXGoogleChatExtension"
             });
 
-            return new GoogleChatService(chatService, options.SpaceId);
+            return new GoogleChatService(chatService, options);
         }
 
         private static async Task<UserCredential> LoadOAuth2CredentialAsync(string clientSecretsPath)
@@ -52,8 +55,8 @@ namespace VSIXGoogleChat.Services
             using var stream = new FileStream(clientSecretsPath, FileMode.Open, FileAccess.Read);
             var secrets = (await GoogleClientSecrets.FromStreamAsync(stream)).Secrets;
 
-            string[] scopes = [HangoutsChatService.Scope.ChatMessages];
-            string localAppData   = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string[] scopes = [HangoutsChatService.Scope.ChatMessages, "https://www.googleapis.com/auth/chat.spaces.readonly"];
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string tokenStorePath = Path.Combine(localAppData, "VSIXInternalPowerShell", "TokenStore");
             var dataStore = new FileDataStore(tokenStorePath, true);
 
@@ -73,8 +76,8 @@ namespace VSIXGoogleChat.Services
 
             try
             {
-                var message  = new Message { Text = text };
-                var request  = _chatService.Spaces.Messages.Create(message, _spaceId);
+                var message = new Message { Text = text };
+                var request = _chatService.Spaces.Messages.Create(message, _spaceId);
                 var response = await request.ExecuteAsync();
                 return response.Name;
             }
@@ -89,7 +92,7 @@ namespace VSIXGoogleChat.Services
         {
             var request = _chatService.Spaces.Messages.List(_spaceId);
             request.PageSize = maxCount;
-            request.OrderBy  = "create_time DESC";
+            request.OrderBy = "create_time DESC";
             var response = await request.ExecuteAsync();
 
             if (response.Messages == null || !response.Messages.Any())
@@ -98,13 +101,13 @@ namespace VSIXGoogleChat.Services
             var allMessages = response.Messages
                 .Select(m => new ChatMessage
                 {
-                    Id                  = m.Name,
-                    Text                = m.Text,
-                    SenderName          = GetSenderName(m),
-                    CreateTime          = m.CreateTimeDateTimeOffset?.UtcDateTime ?? DateTime.MinValue,
-                    HasAttachments      = m.Attachment != null && m.Attachment.Any(),
+                    Id = m.Name,
+                    Text = m.Text,
+                    SenderName = GetSenderName(m),
+                    CreateTime = m.CreateTimeDateTimeOffset?.UtcDateTime ?? DateTime.MinValue,
+                    HasAttachments = m.Attachment != null && m.Attachment.Any(),
                     AttachmentMimeTypes = m.Attachment?.Select(a => a.ContentType).ToList() ?? [],
-                    Attachments         = m.Attachment?.Select(a => new ChatAttachment
+                    Attachments = m.Attachment?.Select(a => new ChatAttachment
                     {
                         Name = a.AttachmentDataRef?.ResourceName ?? a.Name ?? "",
                         ContentName = a.ContentName ?? "",
@@ -130,8 +133,8 @@ namespace VSIXGoogleChat.Services
 
             try
             {
-                // Ensure resourceName is encoded or formatted correctly if it contains spaces or slashes
-                // resourceName is typically like "spaces/space_id/messages/msg_id/attachments/att_id/paths"
+                // Format the resource URL for media download. 
+                // The resourceName argument follows the pattern: "spaces/{space}/messages/{message}/attachments/{attachment}"
                 string url = $"https://chat.googleapis.com/v1/media/{resourceName}?alt=media";
                 var response = await _chatService.HttpClient.GetAsync(url);
                 if (response.IsSuccessStatusCode)
@@ -148,6 +151,207 @@ namespace VSIXGoogleChat.Services
                 Debug.WriteLine($"DownloadAttachment error: {ex.Message}");
             }
             return null;
+        }
+
+        public void SetCurrentSpace(string spaceId)
+        {
+            _spaceId = spaceId;
+            if (!_spaceId.StartsWith("spaces/"))
+                _spaceId = "spaces/" + _spaceId;
+        }
+
+        public string GetCurrentSpace() => _spaceId;
+
+        public async Task<List<ChatSpace>> GetSpacesAsync()
+        {
+            try
+            {
+                var request = _chatService.Spaces.List();
+                var response = await request.ExecuteAsync();
+
+                if (response.Spaces == null || !response.Spaces.Any())
+                    return new List<ChatSpace>();
+
+                var spaces = new List<ChatSpace>();
+                foreach (var s in response.Spaces)
+                {
+                    string name = s.DisplayName;
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        if (s.Type == "DIRECT_MESSAGE")
+                        {
+                            try
+                            {
+                                var membersRequest = _chatService.Spaces.Members.List(s.Name);
+                                var membersResponse = await membersRequest.ExecuteAsync();
+                                if (membersResponse.Memberships != null)
+                                {
+                                    var otherMember = membersResponse.Memberships.FirstOrDefault(m =>
+                                        m.Member != null && m.Member.Type == "HUMAN" &&
+                                        !string.Equals(m.Member.DisplayName, _options.MyChatUsername, StringComparison.OrdinalIgnoreCase) &&
+                                        !string.Equals(m.Member.Name, _options.MyChatUsername, StringComparison.OrdinalIgnoreCase));
+
+                                    if (otherMember != null && !string.IsNullOrWhiteSpace(otherMember.Member.DisplayName))
+                                    {
+                                        name = otherMember.Member.DisplayName;
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(name)) name = s.Name;
+
+                    spaces.Add(new ChatSpace
+                    {
+                        Id = s.Name,
+                        Name = name
+                    });
+                }
+                return spaces;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"GetSpaces error: {ex.Message}");
+                return new List<ChatSpace>();
+            }
+        }
+
+        public async Task<string?> SendMessageWithAttachmentAsync(string text, string filePath, string mimeType)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                return await SendMessageAsync(text);
+
+            try
+            {
+                string filename = Path.GetFileName(filePath);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+
+                var uploadRequest = _chatService.Media.Upload(
+                    new UploadAttachmentRequest { Filename = filename },
+                    _spaceId,
+                    stream,
+                    mimeType
+                );
+
+                var progress = await uploadRequest.UploadAsync();
+                if (progress.Status != Google.Apis.Upload.UploadStatus.Completed)
+                {
+                    throw new Exception($"File upload failed: {progress.Exception?.Message ?? progress.Status.ToString()}");
+                }
+
+                var responseBody = uploadRequest.ResponseBody;
+                if (responseBody?.AttachmentDataRef == null)
+                {
+                    throw new Exception("File upload succeeded but response is empty.");
+                }
+
+                var message = new Message
+                {
+                    Text = text,
+                    Attachment = new List<Attachment>
+                    {
+                        new Attachment
+                        {
+                            AttachmentDataRef = new AttachmentDataRef
+                            {
+                                AttachmentUploadToken = responseBody.AttachmentDataRef.AttachmentUploadToken
+                            }
+                        }
+                    }
+                };
+
+                var request = _chatService.Spaces.Messages.Create(message, _spaceId);
+                var response = await request.ExecuteAsync();
+                return response.Name;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"SendMessageWithAttachment error: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<string?> SendMessageWithAttachmentsAsync(string text, List<string> filePaths)
+        {
+            if (filePaths == null || !filePaths.Any())
+                return await SendMessageAsync(text);
+
+            try
+            {
+                var attachmentsList = new List<Attachment>();
+
+                foreach (var filePath in filePaths)
+                {
+                    if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                        continue;
+
+                    string filename = Path.GetFileName(filePath);
+                    string mimeType = GetMimeType(filename);
+                    using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+
+                    var uploadRequest = _chatService.Media.Upload(
+                        new UploadAttachmentRequest { Filename = filename },
+                        _spaceId,
+                        stream,
+                        mimeType
+                    );
+
+                    var progress = await uploadRequest.UploadAsync();
+                    if (progress.Status != Google.Apis.Upload.UploadStatus.Completed)
+                    {
+                        throw new Exception($"File upload failed for {filename}: {progress.Exception?.Message ?? progress.Status.ToString()}");
+                    }
+
+                    var responseBody = uploadRequest.ResponseBody;
+                    if (responseBody?.AttachmentDataRef == null)
+                    {
+                        throw new Exception($"File upload succeeded for {filename} but response is empty.");
+                    }
+
+                    attachmentsList.Add(new Attachment
+                    {
+                        AttachmentDataRef = new AttachmentDataRef
+                        {
+                            AttachmentUploadToken = responseBody.AttachmentDataRef.AttachmentUploadToken
+                        }
+                    });
+                }
+
+                var message = new Message
+                {
+                    Text = text,
+                    Attachment = attachmentsList
+                };
+
+                var request = _chatService.Spaces.Messages.Create(message, _spaceId);
+                var response = await request.ExecuteAsync();
+                return response.Name;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"SendMessageWithAttachments error: {ex.Message}");
+                throw;
+            }
+        }
+
+        private string GetMimeType(string fileName)
+        {
+            string ext = Path.GetExtension(fileName).ToLowerInvariant();
+            return ext switch
+            {
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".pdf" => "application/pdf",
+                ".txt" => "text/plain",
+                ".zip" => "application/zip",
+                ".mp3" => "audio/mpeg",
+                ".wav" => "audio/wav",
+                ".mp4" => "video/mp4",
+                _ => "application/octet-stream"
+            };
         }
 
         private string GetSenderName(Message message)

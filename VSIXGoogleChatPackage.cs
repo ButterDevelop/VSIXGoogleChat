@@ -29,7 +29,7 @@ namespace VSIXGoogleChat
     [ProvideMenuResource("Menus.ctmenu", 1)]
     [ProvideToolWindow(typeof(ChatToolWindow))]
     [ProvideOptionPage(typeof(ChatOptions), "Internal PowerShell", "General", 0, 0, true)]
-    [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string,     PackageAutoLoadFlags.BackgroundLoad)]
+    [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionExists_string, PackageAutoLoadFlags.BackgroundLoad)]
     public sealed class VSIXGoogleChatPackage : AsyncPackage
     {
