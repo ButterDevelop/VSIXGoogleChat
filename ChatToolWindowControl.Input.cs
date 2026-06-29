@@ -28,7 +28,13 @@ namespace VSIXGoogleChat
             new CommandSuggestion { Command = "#file", Description = "Upload and send file(s). Example: #file C:\\pic.png" },
             new CommandSuggestion { Command = "#upload", Description = "Upload and send file(s). Example: #upload C:\\pic.png" },
             new CommandSuggestion { Command = "#setname", Description = "Assign a custom nickname to this chat space. Use without arguments to clear." },
-            new CommandSuggestion { Command = "#help", Description = "Display detailed help about all available chat commands." }
+            new CommandSuggestion { Command = "#clear", Description = "Clear the chat screen. (Alias: #cls)" },
+            new CommandSuggestion { Command = "#status", Description = "Show current chat connection status, space details, and settings." },
+            new CommandSuggestion { Command = "#stealth", Description = "Toggle Stealth Mode." },
+            new CommandSuggestion { Command = "#silent", Description = "Toggle Silent Mode." },
+            new CommandSuggestion { Command = "#mute", Description = "Toggle notification sounds on/off." },
+            new CommandSuggestion { Command = "#spaces", Description = "List all available spaces and direct messages with their IDs." },
+            new CommandSuggestion { Command = "#help", Description = "Display detailed help about all available chat commands. (Alias: #?)" }
         };
 
         private async void InputTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -230,11 +236,107 @@ namespace VSIXGoogleChat
                 {
                     tb.Clear();
                     await AppendSystemMessageAsync("Available commands:\n" +
-                        "  #file <path1>, <path2> [message] - Upload and send one or more files/images.\n" +
+                        "  #file <path1>, <path2> [message] - Upload and send file(s).\n" +
                         "  #upload <path1>, <path2> [message] - Alias for #file.\n" +
-                        "  #setname <nickname> - Set a custom nickname for this space.\n" +
-                        "  #setname - Clear the custom nickname for this space.\n" +
+                        "  #setname <nickname> - Set a custom nickname for this space (empty to clear).\n" +
+                        "  #clear or #cls - Clear the chat screen.\n" +
+                        "  #status - Show connection status, space details, and modes.\n" +
+                        "  #stealth - Toggle Stealth Mode.\n" +
+                        "  #silent - Toggle Silent Mode.\n" +
+                        "  #mute - Toggle sound notifications on/off.\n" +
+                        "  #spaces - List all available chat spaces with their IDs.\n" +
                         "  #help or #? - Show this help menu.", useNewLine: true);
+                    return;
+                }
+
+                if (userInput.Equals("#clear", StringComparison.OrdinalIgnoreCase) ||
+                    userInput.Equals("#cls", StringComparison.OrdinalIgnoreCase))
+                {
+                    ClearRichTextBox(HistoryRichTextBox);
+                    tb.Clear();
+                    InputTextBox.Focus();
+                    return;
+                }
+
+                if (userInput.Equals("#status", StringComparison.OrdinalIgnoreCase))
+                {
+                    tb.Clear();
+                    string spaceName = "Unknown";
+                    string currentSpaceId = _chatService?.GetCurrentSpace() ?? "";
+                    if (_chatService != null)
+                    {
+                        var spaces = await _chatService.GetSpacesAsync();
+                        var space = spaces.FirstOrDefault(s => s.Id == currentSpaceId);
+                        if (space != null)
+                        {
+                            spaceName = space.Name;
+                        }
+                    }
+
+                    string nickname = _chatOptions != null && !string.IsNullOrEmpty(currentSpaceId) 
+                        ? _chatOptions.GetSpaceNickname(currentSpaceId) 
+                        : "";
+
+                    string nicknameStr = string.IsNullOrEmpty(nickname) ? "None" : $"'{nickname}'";
+                    string silentStr = _isSilentMode ? "Active" : "Inactive";
+                    string stealthStr = _isStealthMode ? "Active" : "Inactive";
+                    string notificationsStr = _chatOptions != null && _chatOptions.EnableNotifications ? "Enabled" : "Disabled";
+
+                    await AppendSystemMessageAsync($"Chat Status:\n" +
+                        $"  Active Space ID: {currentSpaceId}\n" +
+                        $"  Active Space Name: {spaceName}\n" +
+                        $"  Nickname: {nicknameStr}\n" +
+                        $"  Stealth Mode: {stealthStr}\n" +
+                        $"  Silent Mode: {silentStr}\n" +
+                        $"  Notifications Sound: {notificationsStr}", useNewLine: true);
+                    return;
+                }
+
+                if (userInput.Equals("#stealth", StringComparison.OrdinalIgnoreCase))
+                {
+                    tb.Clear();
+                    await ToggleStealthModeAsync();
+                    return;
+                }
+
+                if (userInput.Equals("#silent", StringComparison.OrdinalIgnoreCase))
+                {
+                    tb.Clear();
+                    await ToggleSilentModeAsync();
+                    return;
+                }
+
+                if (userInput.Equals("#mute", StringComparison.OrdinalIgnoreCase))
+                {
+                    tb.Clear();
+                    if (_chatOptions != null)
+                    {
+                        _chatOptions.EnableNotifications = !_chatOptions.EnableNotifications;
+                        _chatOptions.SaveSettingsToStorage();
+                        string state = _chatOptions.EnableNotifications ? "enabled" : "disabled";
+                        await AppendSystemMessageAsync($"Sound notifications are now {state}.");
+                    }
+                    return;
+                }
+
+                if (userInput.Equals("#spaces", StringComparison.OrdinalIgnoreCase))
+                {
+                    tb.Clear();
+                    if (_chatService == null || _chatOptions == null)
+                    {
+                        await AppendSystemMessageAsync("Chat service not initialized.");
+                        return;
+                    }
+
+                    var spacesList = await _chatService.GetSpacesAsync();
+                    var sb = new System.Text.StringBuilder("Available Spaces:\n");
+                    foreach (var s in spacesList)
+                    {
+                        string nickname = _chatOptions.GetSpaceNickname(s.Id);
+                        string nicknamePart = string.IsNullOrEmpty(nickname) ? "" : $" (Nickname: '{nickname}')";
+                        sb.AppendLine($"  - ID: {s.Id} | Name: {s.Name}{nicknamePart}");
+                    }
+                    await AppendSystemMessageAsync(sb.ToString().TrimEnd(), useNewLine: true);
                     return;
                 }
 
@@ -587,7 +689,7 @@ namespace VSIXGoogleChat
                     if (_chatOptions != null && _chatOptions.EnableNotifications)
                     {
                         RefreshHistory();
-                        StartPollingMessages();
+                        StartPollingMessagesAsync();
                     }
                 }
             }
@@ -687,7 +789,7 @@ namespace VSIXGoogleChat
                     if (_chatOptions.EnableNotifications)
                         _successSound?.Play();
 
-                    StartPollingMessages();
+                    StartPollingMessagesAsync();
 
                     if (deleteAfterSend)
                     {

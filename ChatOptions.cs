@@ -13,9 +13,7 @@ namespace VSIXGoogleChat
         private string _spaceId = "";
         private string _googleCredentialsPath = "";
 
-        [Category("Google Chat")]
-        [DisplayName("Space ID")]
-        [Description("Dialogue ID at Google Chat")]
+        [Browsable(false)]
         public string SpaceId
         {
             get { return _spaceId; }
@@ -31,16 +29,8 @@ namespace VSIXGoogleChat
             set { _googleCredentialsPath = value; }
         }
 
-        [Category("Google Chat")]
-        [DisplayName("Your account username")]
-        [Description("Something like \"users/...\"")]
+        [Browsable(false)]
         public string MyChatUsername { get; set; } = "";
-
-        [Category("Stealth Mode")]
-        [DisplayName("Toggle Hotkey")]
-        [Description("The keyboard shortcut to toggle the stealth mode.")]
-        [DefaultValue("Ctrl+Shift+R")]
-        public string StealthHotKey { get; set; } = "Ctrl+Shift+R";
 
         [Category("Stealth Mode")]
         [DisplayName("Enable Fake Output")]
@@ -53,12 +43,6 @@ namespace VSIXGoogleChat
         [Description("When true, hides window when Stealth Mode becomes On.")]
         [DefaultValue(false)]
         public bool HideWindowStealthMode { get; set; } = false;
-
-        [Category("Silent Mode")]
-        [DisplayName("Toggle Hotkey")]
-        [Description("The keyboard shortcut to toggle the silent mode.")]
-        [DefaultValue("Ctrl+Shift+Y")]
-        public string SilentHotKey { get; set; } = "Ctrl+Shift+Y";
 
         [Category("Notifications")]
         [DisplayName("Enable sound notifications")]

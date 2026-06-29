@@ -40,9 +40,16 @@ Thus, VSIXGoogleChat was born. To anyone casually looking at your screen, it jus
 ## 🛠️ Usage
 
 - Open the chat window from the Visual Studio menu (`View` -> `Other Windows` -> `Google Chat` or via the configured shortcut).
-- Use the input text box at the bottom to type and send messages. You can use special commands:
+- Use the input text box at the bottom to type and send messages. You can use special hash commands:
   - `#file "path1", path2` or `#upload` to send multiple files or images.
   - `#setname <Nickname>` to assign a custom display name to the current space (or `#setname` to clear it).
+  - `#clear` or `#cls` to clear the terminal chat history on screen.
+  - `#status` to check connection status, current space details, and toggle modes.
+  - `#stealth` to toggle Stealth Mode.
+  - `#silent` to toggle Silent Mode.
+  - `#mute` to toggle sound notifications.
+  - `#spaces` to print the list of all available chats and direct messages with their IDs.
+  - `#help` or `#?` to display the detailed help message in chat.
 - Use the toolbar buttons to toggle **Stealth Mode**, **Silent Mode**, or **Notifications**.
 - Click on `[Photo]` or `[Voice]` links in the chat to open the built-in media previewer.
 

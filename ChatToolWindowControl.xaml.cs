@@ -31,11 +31,11 @@ namespace VSIXGoogleChat
         private Process?           _realPowerShellProcess;
         private ChatOptions        _chatOptions;
 
-        private bool _isFirstStart  = true;
+        private bool _isFirstStart = true;
 
-        private bool _isStealthMode = false;
-        private bool _isSilentMode  = false;
-        private string?            _lastActiveSpaceId     = null;
+        private bool    _isStealthMode     = false;
+        private bool    _isSilentMode      = false;
+        private string? _lastActiveSpaceId = null;
         
         private static readonly FontFamily      TerminalFontFamily = new(new Uri("pack://application:,,,/VSIXGoogleChat;component/Fonts/CascadiaMono.ttf"), "./#Cascadia Mono");
         private static readonly SolidColorBrush TerminalForeground = new(Color.FromRgb(0xFA, 0xFA, 0xFA));
@@ -62,7 +62,7 @@ namespace VSIXGoogleChat
 
         private string _savedInputBeforeStealth = string.Empty;
 
-        private readonly List<string> _commandHistory = [];
+        private readonly List<string> _commandHistory   = [];
         private int                   _historyIndex     = -1;
         private string?               _tempCurrentInput = null;
 
@@ -71,13 +71,13 @@ namespace VSIXGoogleChat
         private readonly SoundPlayer _errorSound;
 
         private DispatcherTimer?     _mediaTimer;
-        private bool                 _isSliderDragging = false;
+        private bool                 _isSliderDragging      = false;
         private ChatAttachment?      _activeAudioAttachment;
         private string?              _activeMediaLocalPath;
         private HashSet<string>      _listenedVoiceMessages = [];
-        private bool                 _autoplayOnOpen = false;
-        private List<ChatAttachment> _previewAttachments = [];
-        private int                  _currentPreviewIndex = 0;
+        private bool                 _autoplayOnOpen        = false;
+        private List<ChatAttachment> _previewAttachments    = [];
+        private int                  _currentPreviewIndex   = 0;
 
         private static readonly Dictionary<string, Brush> AnsiColorMap = new()
         {
@@ -186,7 +186,7 @@ namespace VSIXGoogleChat
                 if (_chatOptions.EnableNotifications)
                 {
                     RefreshHistory();
-                    await StartPollingMessages();
+                    _ = StartPollingMessagesAsync();
                 }
 
                 if (_isFirstStart)
@@ -259,19 +259,19 @@ namespace VSIXGoogleChat
             {
                 // Office and document formats
                 "application/pdf" => "[PDF]",
-                "application/msword" or "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "[Word]",
-                "application/vnd.ms-excel" or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "[Excel]",
+                "application/msword"            or "application/vnd.openxmlformats-officedocument.wordprocessingml.document"   => "[Word]",
+                "application/vnd.ms-excel"      or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"         => "[Excel]",
                 "application/vnd.ms-powerpoint" or "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "[PowerPoint]",
                 // Compressed file archives
-                "application/zip" or "application/x-zip-compressed" or "application/x-rar-compressed" or "application/x-7z-compressed" => "[Archive]",
+                "application/zip"               or "application/x-zip-compressed" or "application/x-rar-compressed" or "application/x-7z-compressed" => "[Archive]",
                 // Source code and plain text files
-                "text/plain" or "text/x-csharp" or "text/x-java" or "text/x-python" or "application/json" or "application/xml" or "text/xml" => "[Code]",
+                "text/plain"                    or "text/x-csharp"                or "text/x-java"                  or "text/x-python" or "application/json" or "application/xml" or "text/xml" => "[Code]",
                 // Unrecognized file formats
                 _ => "[File]",
             };
         }
 
-        private async Task StartPollingMessages()
+        private async Task StartPollingMessagesAsync()
         {
             await StopPollingMessagesAsync();
 
@@ -487,7 +487,7 @@ namespace VSIXGoogleChat
 
                 await ClearAndShowChatInterfaceAsync();
                 RefreshHistory();
-                StartPollingMessages();
+                _ = StartPollingMessagesAsync();
                 RequestWindowVisibility?.Invoke(true);
             }
         }
@@ -536,7 +536,7 @@ namespace VSIXGoogleChat
                 VisualTextBox.Visibility = Visibility.Collapsed;
 
                 await AppendSystemMessageAsync("#compile.smd \"Build succeeded\"");
-                StartPollingMessages();
+                _ = StartPollingMessagesAsync();
             }
         }
 
@@ -546,7 +546,7 @@ namespace VSIXGoogleChat
             _chatOptions.EnableNotifications = enable;
             if (enable)
             {
-                StartPollingMessages();
+                _ = StartPollingMessagesAsync();
                 AppendSystemMessageAsync("Notifications enabled, background polling started.").FireAndForget();
             }
             else

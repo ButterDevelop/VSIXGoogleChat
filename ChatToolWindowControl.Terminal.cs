@@ -69,12 +69,7 @@ namespace VSIXGoogleChat
             {
                 if (match.Index > 0)
                 {
-                    paragraph.Inlines.Add(new Run(text.Substring(0, match.Index))
-                    {
-                        Foreground = defaultColor,
-                        FontFamily = TerminalFontFamily,
-                        FontSize   = TerminalFontSize
-                    });
+                    AddHashCommandColoredRuns(paragraph, text.Substring(0, match.Index), defaultColor);
                 }
 
                 paragraph.Inlines.Add(new Run(text.Substring(match.Index, match.Length))
@@ -86,17 +81,47 @@ namespace VSIXGoogleChat
 
                 if (match.Index + match.Length < text.Length)
                 {
-                    paragraph.Inlines.Add(new Run(text.Substring(match.Index + match.Length))
+                    AddHashCommandColoredRuns(paragraph, text.Substring(match.Index + match.Length), defaultColor);
+                }
+            }
+            else
+            {
+                AddHashCommandColoredRuns(paragraph, text, defaultColor);
+            }
+        }
+
+        private void AddHashCommandColoredRuns(Paragraph paragraph, string text, Brush defaultColor)
+        {
+            var regex = new Regex(@"(#\w+|#\?)", RegexOptions.Compiled);
+            var matches = regex.Matches(text);
+            int lastIndex = 0;
+
+            foreach (Match m in matches)
+            {
+                if (m.Index > lastIndex)
+                {
+                    paragraph.Inlines.Add(new Run(text.Substring(lastIndex, m.Index - lastIndex))
                     {
                         Foreground = defaultColor,
                         FontFamily = TerminalFontFamily,
                         FontSize   = TerminalFontSize
                     });
                 }
+
+                paragraph.Inlines.Add(new Run(m.Value)
+                {
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x7A, 0x89, 0xC2)),
+                    FontFamily = TerminalFontFamily,
+                    FontSize   = TerminalFontSize,
+                    FontWeight = FontWeights.Bold
+                });
+
+                lastIndex = m.Index + m.Length;
             }
-            else
+
+            if (lastIndex < text.Length)
             {
-                paragraph.Inlines.Add(new Run(text)
+                paragraph.Inlines.Add(new Run(text.Substring(lastIndex))
                 {
                     Foreground = defaultColor,
                     FontFamily = TerminalFontFamily,
@@ -277,7 +302,7 @@ namespace VSIXGoogleChat
             ClearRichTextBox(HistoryRichTextBox);
             AppendTerminalOutput("Windows PowerShell");
             AppendTerminalOutput($"Copyright (C) Microsoft Corporation. All rights reserved.{Environment.NewLine}");
-            await AppendSystemMessageAsync("Stealth mode deactivated. Back to chat.");
+            await AppendSystemMessageAsync("Stealth mode deactivated. Back to chat. Type #help to see available commands.");
         }
 
         public void AppendTerminalOutput(string text)

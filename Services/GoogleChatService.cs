@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace VSIXGoogleChat.Services
 {
@@ -42,7 +43,59 @@ namespace VSIXGoogleChat.Services
                 ApplicationName = "VSIXGoogleChatExtension"
             });
 
-            return new GoogleChatService(chatService, options);
+            var service = new GoogleChatService(chatService, options);
+
+            if (string.IsNullOrEmpty(options.MyChatUsername))
+            {
+                try
+                {
+                    string? accessToken = credential.Token?.AccessToken;
+                    if (string.IsNullOrEmpty(accessToken))
+                    {
+                        accessToken = await credential.GetAccessTokenForRequestAsync();
+                    }
+
+                    if (!string.IsNullOrEmpty(accessToken))
+                    {
+                        string? myUserId = await service.GetMyUserIdAsync(accessToken);
+                        if (!string.IsNullOrEmpty(myUserId))
+                        {
+                            options.MyChatUsername = myUserId;
+                            options.SaveSettingsToStorage();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to auto-resolve MyChatUsername: {ex.Message}");
+                }
+            }
+
+            return service;
+        }
+
+        private async Task<string?> GetMyUserIdAsync(string accessToken)
+        {
+            try
+            {
+                using var client = new System.Net.Http.HttpClient();
+                string url = $"https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={accessToken}";
+                var response = await client.GetAsync(url);
+                if (response.IsSuccessStatusCode)
+                {
+                    string json = await response.Content.ReadAsStringAsync();
+                    var match = Regex.Match(json, @"""sub""\s*:\s*""([^""]+)""");
+                    if (match.Success)
+                    {
+                        return "users/" + match.Groups[1].Value;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to query tokeninfo: {ex.Message}");
+            }
+            return null;
         }
 
         private static async Task<UserCredential> LoadOAuth2CredentialAsync(string clientSecretsPath)
