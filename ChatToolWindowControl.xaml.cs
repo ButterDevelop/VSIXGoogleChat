@@ -35,6 +35,7 @@ namespace VSIXGoogleChat
 
         private bool _isStealthMode = false;
         private bool _isSilentMode  = false;
+        private string?            _lastActiveSpaceId     = null;
         
         private static readonly FontFamily      TerminalFontFamily = new(new Uri("pack://application:,,,/VSIXGoogleChat;component/Fonts/CascadiaMono.ttf"), "./#Cascadia Mono");
         private static readonly SolidColorBrush TerminalForeground = new(Color.FromRgb(0xFA, 0xFA, 0xFA));
@@ -44,7 +45,7 @@ namespace VSIXGoogleChat
         private static readonly SolidColorBrush DOTNET_RUN_COLOR   = new(Color.FromRgb(0xF9, 0xF1, 0xA5));
         private static readonly SolidColorBrush TIME_COLOR         = new(Color.FromRgb(0x80, 0x80, 0x80));
         private const double TerminalFontSize = 12;
-
+        
         public event Action<bool>? RequestWindowVisibility;
 
         private CancellationTokenSource? _pollingCts         = null;
@@ -117,15 +118,15 @@ namespace VSIXGoogleChat
             _chatOptions = new();
 
             _notificationSound = new(Properties.Resources.notification);
-            _successSound = new(Properties.Resources.success);
-            _errorSound = new(Properties.Resources.error);
+            _successSound      = new(Properties.Resources.success);
+            _errorSound        = new(Properties.Resources.error);
 
             InitializeAudioPlayer();
             LoadListenedMessages();
 
             DataObject.AddPastingHandler(this, OnPaste);
 
-            Loaded += ChatToolWindowControl_Loaded;
+            Loaded   += ChatToolWindowControl_Loaded;
             Unloaded += ChatToolWindowControl_Unloaded;
         }
 
@@ -135,7 +136,7 @@ namespace VSIXGoogleChat
             _idleTimer.Tick += OnIdleTimerTick;
             _idleTimer.Start();
 
-            this.PreviewKeyDown += ResetIdleTimer;
+            this.PreviewKeyDown   += ResetIdleTimer;
             this.PreviewMouseMove += ResetIdleTimer;
         }
 
@@ -180,15 +181,12 @@ namespace VSIXGoogleChat
                 _chatService = await GoogleChatService.CreateAsync(_chatOptions);
 
                 // Fetch and populate the Google Chat spaces dropdown selector
-                var spaces = await _chatService.GetSpacesAsync();
-                SpaceSelector.ItemsSource = spaces;
-                var currentSpaceId = _chatService.GetCurrentSpace();
-                SpaceSelector.SelectedItem = spaces.FirstOrDefault(s => s.Id == currentSpaceId);
+                await RefreshSpacesSelectorAsync();
 
                 if (_chatOptions.EnableNotifications)
                 {
                     RefreshHistory();
-                    StartPollingMessages();
+                    await StartPollingMessages();
                 }
 
                 if (_isFirstStart)
@@ -220,6 +218,27 @@ namespace VSIXGoogleChat
         {
             lock (_pollingLock) { _lastMessageTime = DateTime.MinValue; }
             _firstLoadCompleted = false;
+        }
+
+        public async Task RefreshSpacesSelectorAsync()
+        {
+            if (_chatService == null || _chatOptions == null) return;
+
+            var spaces = await _chatService.GetSpacesAsync();
+            foreach (var space in spaces)
+            {
+                string nickname = _chatOptions.GetSpaceNickname(space.Id);
+                if (!string.IsNullOrEmpty(nickname))
+                {
+                    space.Name = nickname;
+                }
+            }
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            SpaceSelector.ItemsSource = spaces;
+            var currentSpaceId = _chatService.GetCurrentSpace();
+            _lastActiveSpaceId = currentSpaceId;
+            SpaceSelector.SelectedItem = spaces.FirstOrDefault(s => s.Id == currentSpaceId);
         }
 
         private string GetAttachmentPlaceholder(List<string> mimeTypes)

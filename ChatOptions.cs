@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
@@ -65,5 +65,51 @@ namespace VSIXGoogleChat
         [Description("Play a sound when new messages arrive")]
         [DefaultValue(true)]
         public bool EnableNotifications { get; set; } = true;
+        [Browsable(false)]
+        public string SpaceNamesMapping { get; set; } = "";
+
+        public string GetSpaceNickname(string spaceId)
+        {
+            if (string.IsNullOrEmpty(spaceId) || string.IsNullOrEmpty(SpaceNamesMapping))
+                return "";
+
+            var pairs = SpaceNamesMapping.Split(';');
+            foreach (var pair in pairs)
+            {
+                var kv = pair.Split('=');
+                if (kv.Length == 2 && kv[0] == spaceId)
+                    return kv[1];
+            }
+            return "";
+        }
+
+        public void SetSpaceNickname(string spaceId, string nickname)
+        {
+            if (string.IsNullOrEmpty(spaceId)) return;
+
+            var mappings = new System.Collections.Generic.Dictionary<string, string>();
+            if (!string.IsNullOrEmpty(SpaceNamesMapping))
+            {
+                var pairs = SpaceNamesMapping.Split(';');
+                foreach (var pair in pairs)
+                {
+                    var kv = pair.Split('=');
+                    if (kv.Length == 2)
+                        mappings[kv[0]] = kv[1];
+                }
+            }
+
+            if (string.IsNullOrEmpty(nickname))
+                mappings.Remove(spaceId);
+            else
+                mappings[spaceId] = nickname;
+
+            var list = new System.Collections.Generic.List<string>();
+            foreach (var kv in mappings)
+            {
+                list.Add($"{kv.Key}={kv.Value}");
+            }
+            SpaceNamesMapping = string.Join(";", list);
+        }
     }
 }

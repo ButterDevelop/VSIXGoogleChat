@@ -19,7 +19,7 @@ Thus, VSIXGoogleChat was born. To anyone casually looking at your screen, it jus
   - **Fake Output**: Displays highly realistic simulated `dotnet run` commands and build logs.
   - **Real Terminal**: Runs a live, hidden background PowerShell (`pwsh.exe`) instance, allowing you to run actual shell commands with full ANSI color support.
 - **Silent Mode**: Mask your typing by displaying fake C# compilation messages on-screen while sending your real text secretly to Google Chat.
-- **Spaces Selector**: Easily switch spaces or direct messages via a sleek, dark-themed dropdown. It dynamically resolves cryptic Google Chat space IDs to show the actual display names of your DM partners.
+- **Spaces Selector**: Easily switch spaces or direct messages via a sleek, dark-themed dropdown. It dynamically resolves cryptic Google Chat space IDs to show the actual display names of your DM partners. You can also assign a custom nickname to any space/DM using the `#setname <Nickname>` command (or just `#setname` without arguments to clear it).
 - **Upload & Send Multiple Files**: Send single or multiple files/images by typing `#file "C:\path1.png", C:\path2.png` or `#upload "C:\path1.png", C:\path2.png` (supports comma-separated lists of paths, with or without quotes, and optional message at the end).
 - **Drag & Drop / Clipboard Support**: Drag and drop multiple files anywhere onto the chat window to send them instantly. Paste multiple files or raw screenshots directly from your clipboard using `Ctrl+V` or the right-click context menu.
 - **Smart Chat Scrolling**: The chat list scrolls to the bottom on new messages only if you are already scrolled to the bottom. If you scroll up to read the history, your view remains undisturbed.
@@ -40,7 +40,9 @@ Thus, VSIXGoogleChat was born. To anyone casually looking at your screen, it jus
 ## 🛠️ Usage
 
 - Open the chat window from the Visual Studio menu (`View` -> `Other Windows` -> `Google Chat` or via the configured shortcut).
-- Use the input text box at the bottom to type and send messages.
+- Use the input text box at the bottom to type and send messages. You can use special commands:
+  - `#file "path1", path2` or `#upload` to send multiple files or images.
+  - `#setname <Nickname>` to assign a custom display name to the current space (or `#setname` to clear it).
 - Use the toolbar buttons to toggle **Stealth Mode**, **Silent Mode**, or **Notifications**.
 - Click on `[Photo]` or `[Voice]` links in the chat to open the built-in media previewer.
 

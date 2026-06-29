@@ -187,6 +187,37 @@
                      SelectionChanged="InputTextBox_SelectionChanged"
                      PreviewKeyDown="InputTextBox_PreviewKeyDown"
                      TextChanged="InputTextBox_TextChanged" />
+            <Popup x:Name="SuggestionsPopup"
+                   PlacementTarget="{Binding ElementName=InputTextBox}"
+                   Placement="Top"
+                   IsOpen="False"
+                   StaysOpen="False"
+                   AllowsTransparency="True">
+                <Border Background="#1E1E1E" 
+                        BorderBrush="#3E3E42" 
+                        BorderThickness="1" 
+                        CornerRadius="4" 
+                        Padding="4"
+                        Width="320"
+                        MaxHeight="200">
+                    <ListBox x:Name="SuggestionsListBox"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="{StaticResource TerminalForeground}"
+                             FontSize="11"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             PreviewMouseLeftButtonUp="SuggestionsListBox_PreviewMouseLeftButtonUp">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="2">
+                                    <TextBlock Text="{Binding Command}" FontWeight="Bold" Foreground="#7A89C2" />
+                                    <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#808080" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Popup>
         </Grid>
 
         <!-- Media Preview Panel (Overlay spanning both rows) -->

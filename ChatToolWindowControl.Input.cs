@@ -23,9 +23,58 @@ namespace VSIXGoogleChat
 {
     public partial class ChatToolWindowControl : UserControl
     {
+        private static readonly List<CommandSuggestion> AllSuggestions = new()
+        {
+            new CommandSuggestion { Command = "#file", Description = "Upload and send file(s). Example: #file C:\\pic.png" },
+            new CommandSuggestion { Command = "#upload", Description = "Upload and send file(s). Example: #upload C:\\pic.png" },
+            new CommandSuggestion { Command = "#setname", Description = "Assign a custom nickname to this chat space. Use without arguments to clear." },
+            new CommandSuggestion { Command = "#help", Description = "Display detailed help about all available chat commands." }
+        };
+
         private async void InputTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (sender is not TextBox tb) return;
+
+            if (SuggestionsPopup != null && SuggestionsPopup.IsOpen)
+            {
+                if (e.Key == Key.Up)
+                {
+                    e.Handled = true;
+                    int index = SuggestionsListBox.SelectedIndex - 1;
+                    if (index < 0) index = SuggestionsListBox.Items.Count - 1;
+                    SuggestionsListBox.SelectedIndex = index;
+                    SuggestionsListBox.ScrollIntoView(SuggestionsListBox.SelectedItem);
+                    return;
+                }
+                if (e.Key == Key.Down)
+                {
+                    e.Handled = true;
+                    int index = SuggestionsListBox.SelectedIndex + 1;
+                    if (index >= SuggestionsListBox.Items.Count) index = 0;
+                    SuggestionsListBox.SelectedIndex = index;
+                    SuggestionsListBox.ScrollIntoView(SuggestionsListBox.SelectedItem);
+                    return;
+                }
+                if (e.Key == Key.Enter || e.Key == Key.Tab)
+                {
+                    e.Handled = true;
+                    if (SuggestionsListBox.SelectedItem is CommandSuggestion selected)
+                    {
+                        ApplySuggestion(selected);
+                    }
+                    else
+                    {
+                        SuggestionsPopup.IsOpen = false;
+                    }
+                    return;
+                }
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    SuggestionsPopup.IsOpen = false;
+                    return;
+                }
+            }
 
             if (e.Key == Key.V && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
             {
@@ -136,6 +185,59 @@ namespace VSIXGoogleChat
                     return;
                 }
 
+                if (userInput.StartsWith("#setname ", StringComparison.OrdinalIgnoreCase) ||
+                    userInput.Equals("#setname", StringComparison.OrdinalIgnoreCase))
+                {
+                    string nickname = "";
+                    if (userInput.StartsWith("#setname ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        nickname = userInput.Substring("#setname ".Length).Trim();
+                    }
+
+                    tb.Clear();
+
+                    if (_chatService == null || _chatOptions == null)
+                    {
+                        await AppendSystemMessageAsync("Chat service is not initialized.");
+                        return;
+                    }
+
+                    string currentSpaceId = _chatService.GetCurrentSpace();
+                    if (string.IsNullOrEmpty(currentSpaceId))
+                    {
+                        await AppendSystemMessageAsync("No active space selected.");
+                        return;
+                    }
+
+                    _chatOptions.SetSpaceNickname(currentSpaceId, nickname);
+                    _chatOptions.SaveSettingsToStorage();
+
+                    if (string.IsNullOrEmpty(nickname))
+                    {
+                        await AppendSystemMessageAsync("Space nickname cleared.");
+                    }
+                    else
+                    {
+                        await AppendSystemMessageAsync($"Space nickname set to: '{nickname}'.");
+                    }
+
+                    await RefreshSpacesSelectorAsync();
+                    return;
+                }
+
+                if (userInput.Equals("#help", StringComparison.OrdinalIgnoreCase) ||
+                    userInput.Equals("#?", StringComparison.OrdinalIgnoreCase))
+                {
+                    tb.Clear();
+                    await AppendSystemMessageAsync("Available commands:\n" +
+                        "  #file <path1>, <path2> [message] - Upload and send one or more files/images.\n" +
+                        "  #upload <path1>, <path2> [message] - Alias for #file.\n" +
+                        "  #setname <nickname> - Set a custom nickname for this space.\n" +
+                        "  #setname - Clear the custom nickname for this space.\n" +
+                        "  #help or #? - Show this help menu.", useNewLine: true);
+                    return;
+                }
+
                 if (userInput.Equals("cls", StringComparison.OrdinalIgnoreCase) ||
                     userInput.Equals("clear", StringComparison.OrdinalIgnoreCase))
                 {
@@ -243,6 +345,35 @@ namespace VSIXGoogleChat
                 UpdateVisualTextBox();
                 VisualTextBox.CaretIndex = oldCaret;
                 ScrollTextBoxToCaret(VisualTextBox, oldCaret);
+            }
+
+            if (InputTextBox == null || SuggestionsPopup == null || SuggestionsListBox == null) return;
+
+            string text = InputTextBox.Text;
+            if (text.StartsWith("#"))
+            {
+                string query = text.Substring(1).ToLowerInvariant();
+                var filtered = AllSuggestions
+                    .Where(s => s.Command.Substring(1).StartsWith(query))
+                    .ToList();
+
+                if (filtered.Any())
+                {
+                    SuggestionsListBox.ItemsSource = filtered;
+                    if (SuggestionsListBox.SelectedIndex < 0 || SuggestionsListBox.SelectedIndex >= filtered.Count)
+                    {
+                        SuggestionsListBox.SelectedIndex = 0;
+                    }
+                    SuggestionsPopup.IsOpen = true;
+                }
+                else
+                {
+                    SuggestionsPopup.IsOpen = false;
+                }
+            }
+            else
+            {
+                SuggestionsPopup.IsOpen = false;
             }
         }
 
@@ -440,6 +571,12 @@ namespace VSIXGoogleChat
         {
             if (SpaceSelector.SelectedItem is VSIXGoogleChat.Services.ChatSpace selectedSpace && _chatService != null)
             {
+                if (selectedSpace.Id == _lastActiveSpaceId)
+                {
+                    return;
+                }
+
+                _lastActiveSpaceId = selectedSpace.Id;
                 _chatService.SetCurrentSpace(selectedSpace.Id);
 
                 if (!_isStealthMode && !_isSilentMode)
@@ -449,6 +586,7 @@ namespace VSIXGoogleChat
 
                     if (_chatOptions != null && _chatOptions.EnableNotifications)
                     {
+                        RefreshHistory();
                         StartPollingMessages();
                     }
                 }
@@ -693,5 +831,35 @@ namespace VSIXGoogleChat
                 await AppendSystemMessageAsync($"Failed to process pasted image: {ex.Message}");
             }
         }
+
+        private void ApplySuggestion(CommandSuggestion selected)
+        {
+            InputTextBox.Text = selected.Command + " ";
+            InputTextBox.CaretIndex = InputTextBox.Text.Length;
+            SuggestionsPopup.IsOpen = false;
+        }
+
+        private void SuggestionsListBox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            var dependencyObject = (DependencyObject)e.OriginalSource;
+            while (dependencyObject != null && dependencyObject != SuggestionsListBox)
+            {
+                if (dependencyObject is ListBoxItem item)
+                {
+                    if (item.DataContext is CommandSuggestion selected)
+                    {
+                        ApplySuggestion(selected);
+                    }
+                    break;
+                }
+                dependencyObject = VisualTreeHelper.GetParent(dependencyObject);
+            }
+        }
+    }
+
+    public class CommandSuggestion
+    {
+        public string Command { get; set; } = "";
+        public string Description { get; set; } = "";
     }
 }
