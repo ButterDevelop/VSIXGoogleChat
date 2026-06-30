@@ -139,35 +139,84 @@ namespace VSIXGoogleChat
 
         public async Task AppendTextAsync(string text)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-            var run       = CreateRun(text);
-            var paragraph = new Paragraph(run) { Margin = new Thickness(0) };
-            await AddParagraphAndScrollAsync(paragraph);
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var run       = CreateRun(text);
+                var paragraph = new Paragraph(run) { Margin = new Thickness(0) };
+                AddParagraphAndScroll(paragraph);
+            }, DispatcherPriority.Normal);
         }
 
-        public async Task AppendMessageAsync(string text, SolidColorBrush color, DateTime? createTime = null, List<ChatAttachment>? attachments = null)
+        public Paragraph CreateMessageParagraph(string messageId, string threadName, string senderName, string text, SolidColorBrush color, DateTime? createTime = null, List<ChatAttachment>? attachments = null, string quotedText = "")
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             string timeStr = "";
             if (createTime.HasValue)
             {
                 DateTime localTime = createTime.Value.ToLocalTime();
-                timeStr = $"[{localTime:dd.MM.yyyy HH:mm}] ";
+                timeStr = $" [{localTime:HH:mm}]";
             }
 
-            string full = $"PS C:\\Users\\{Environment.UserName}\\projects> dotnet run {FakeFilesGenerator.GenerateFakeFile()}{Environment.NewLine}";
+            string pathName;
+            if (_isStealthMode)
+            {
+                pathName = $"C:\\Users\\{Environment.UserName}\\projects";
+            }
+            else
+            {
+                if (color == MY_COLOR)
+                {
+                    pathName = "C:\\Me";
+                }
+                else if (color == SYSTEM_COLOR)
+                {
+                    pathName = "C:\\System";
+                }
+                else
+                {
+                    pathName = "C:\\Co";
+                }
+            }
+
+            string full = $"PS {pathName}> dotnet run {FakeFilesGenerator.GenerateFakeFile()}{Environment.NewLine}";
             var paragraph = CreateColoredLine(full, TerminalForeground, color, DOTNET_RUN_COLOR);
+
+            string actualText = text;
+            string actualQuotedText = quotedText;
 
             if (!string.IsNullOrWhiteSpace(text))
             {
-                paragraph.Inlines.Add(new Run(text.Trim() + " ")
+                if (string.IsNullOrEmpty(actualQuotedText))
                 {
-                    Foreground = TerminalForeground,
-                    FontFamily = TerminalFontFamily,
-                    FontSize   = TerminalFontSize
-                });
+                    var match = ReplyRegex.Match(text);
+                    if (match.Success)
+                    {
+                        actualQuotedText = match.Groups[1].Value;
+                        actualText = match.Groups[2].Value;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(actualQuotedText))
+                {
+                    var replyRun = new Run($"   ↳ Reply to: \"{actualQuotedText}\"{Environment.NewLine}")
+                    {
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)),
+                        FontStyle = FontStyles.Italic,
+                        FontFamily = TerminalFontFamily,
+                        FontSize = TerminalFontSize - 1
+                    };
+                    paragraph.Inlines.Add(replyRun);
+                }
+
+                if (!string.IsNullOrWhiteSpace(actualText))
+                {
+                    paragraph.Inlines.Add(new Run(actualText.Trim() + " ")
+                    {
+                        Foreground = TerminalForeground,
+                        FontFamily = TerminalFontFamily,
+                        FontSize   = TerminalFontSize
+                    });
+                }
             }
 
             if (attachments != null && attachments.Any())
@@ -206,6 +255,10 @@ namespace VSIXGoogleChat
                     string placeholder;
                     if (isAudio)
                     {
+                        if (!_sessionAudioAttachments.Any(a => a.Name == att.Name))
+                        {
+                            _sessionAudioAttachments.Add(att);
+                        }
                         bool isListened = IsVoiceMessageListened(att.Name);
                         string status = isListened ? "Listened" : "New";
                         bool isVoiceMessage = att.ContentName.IndexOf("voice_message", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -248,30 +301,53 @@ namespace VSIXGoogleChat
                 });
             }
 
-            await AddParagraphAndScrollAsync(paragraph);
+            paragraph.Tag = new MessageTagInfo
+            {
+                MessageId = messageId,
+                ThreadName = threadName,
+                Text = string.IsNullOrWhiteSpace(actualText) && attachments != null && attachments.Any()
+                    ? GetAttachmentPlaceholder(attachments.Select(a => a.ContentType).ToList())
+                    : actualText
+            };
+
+            return paragraph;
+        }
+
+        public async Task AppendMessageAsync(string senderName, string text, SolidColorBrush color, DateTime? createTime = null, List<ChatAttachment>? attachments = null, string quotedText = "")
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var paragraph = CreateMessageParagraph("", "", senderName, text, color, createTime, attachments, quotedText);
+                AddParagraphAndScroll(paragraph);
+            }, DispatcherPriority.Normal);
         }
 
         public async Task AppendSystemMessageAsync(string text, bool useNewLine = true)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-            string full = $"PS C:\\Users\\{Environment.UserName}\\projects> dotnet run {FakeFilesGenerator.GenerateFakeFile()}{Environment.NewLine}{text}";
-            var paragraph = CreateColoredLine(full, TerminalForeground, SYSTEM_COLOR, DOTNET_RUN_COLOR);
-            await AddParagraphAndScrollAsync(paragraph);
-            if (useNewLine)
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
-                var emptyParagraph = new Paragraph { Margin = new Thickness(0) };
-                await AddParagraphAndScrollAsync(emptyParagraph);
-            }
+                string pathName = _isStealthMode ? $"C:\\Users\\{Environment.UserName}\\projects" : "C:\\System";
+                string full = $"PS {pathName}> dotnet run {FakeFilesGenerator.GenerateFakeFile()}{Environment.NewLine}{text}";
+                var paragraph = CreateColoredLine(full, TerminalForeground, SYSTEM_COLOR, DOTNET_RUN_COLOR);
+
+                AddParagraphAndScroll(paragraph);
+                if (useNewLine)
+                {
+                    var emptyParagraph = new Paragraph { Margin = new Thickness(0) };
+                    AddParagraphAndScroll(emptyParagraph);
+                }
+            }, DispatcherPriority.Normal);
         }
 
         public async Task AppendColoredMessageAsync(string text, Brush color)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
-            var run = CreateRun($"PS C:\\Users\\{Environment.NewLine}\\projects> dotnet run {FakeFilesGenerator.GenerateFakeFile()}{Environment.NewLine}{text}");
-            run.Foreground = color;
-            var paragraph = new Paragraph(run) { Margin = new Thickness(0) };
-            await AddParagraphAndScrollAsync(paragraph);
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
+            {
+                var run = CreateRun($"PS C:\\Users\\{Environment.UserName}\\projects> dotnet run {FakeFilesGenerator.GenerateFakeFile()}{Environment.NewLine}{text}");
+                run.Foreground = color;
+                var paragraph = new Paragraph(run) { Margin = new Thickness(0) };
+                AddParagraphAndScroll(paragraph);
+            }, DispatcherPriority.Normal);
         }
 
         #endregion
@@ -300,8 +376,6 @@ namespace VSIXGoogleChat
             }
 
             ClearRichTextBox(HistoryRichTextBox);
-            AppendTerminalOutput("Windows PowerShell");
-            AppendTerminalOutput($"Copyright (C) Microsoft Corporation. All rights reserved.{Environment.NewLine}");
             await AppendSystemMessageAsync("Stealth mode deactivated. Back to chat. Type #help to see available commands.");
         }
 
@@ -417,6 +491,90 @@ namespace VSIXGoogleChat
 
             if (lastIndex < input.Length)
                 yield return (input.Substring(lastIndex), currentBrush);
+        }
+
+        private void ScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (e.VerticalChange < 0 && e.VerticalOffset == 0)
+            {
+                ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+                {
+                    await LoadOlderMessagesAsync();
+                }).FireAndForget();
+            }
+        }
+
+        private async Task LoadOlderMessagesAsync()
+        {
+            if (_chatService == null || _isLoadingOlderMessages || string.IsNullOrEmpty(_nextPageToken) || _isStealthMode || _isSilentMode)
+                return;
+
+            _isLoadingOlderMessages = true;
+
+            try
+            {
+                var (olderMessages, newNextPageToken) = await _chatService.GetMessagesPageAsync(_nextPageToken, 30);
+                
+                if (olderMessages.Any())
+                {
+                    _nextPageToken = newNextPageToken;
+
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                    var scrollViewer = FindVisualChild<ScrollViewer>(HistoryRichTextBox);
+                    double oldExtentHeight = scrollViewer?.ExtentHeight ?? 0;
+
+                    for (int i = olderMessages.Count - 1; i >= 0; i--)
+                    {
+                        var msg = olderMessages[i];
+                        var color = string.IsNullOrEmpty(_chatOptions.MyChatUsername)
+                            ? TerminalForeground
+                            : (_chatOptions.MyChatUsername == msg.SenderName ? MY_COLOR : PARTNER_COLOR);
+
+                        var paragraph = CreateMessageParagraph(msg.Id, msg.ThreadName, msg.SenderName, msg.Text, color, msg.CreateTime, msg.Attachments, msg.QuotedMessageText);
+                        
+                        var firstBlock = HistoryRichTextBox.Document.Blocks.FirstBlock;
+                        if (firstBlock != null)
+                        {
+                            HistoryRichTextBox.Document.Blocks.InsertBefore(firstBlock, paragraph);
+                        }
+                        else
+                        {
+                            HistoryRichTextBox.Document.Blocks.Add(paragraph);
+                        }
+
+                        if (msg.Attachments != null)
+                        {
+                            foreach (var att in msg.Attachments)
+                            {
+                                bool isAudio = att.ContentType.StartsWith("audio/") || att.ContentName.EndsWith(".m4a") || att.ContentName.EndsWith(".mp3") || att.ContentName.EndsWith(".wav") || att.ContentName.EndsWith(".ogg");
+                                if (isAudio)
+                                {
+                                    if (!_sessionAudioAttachments.Any(a => a.Name == att.Name))
+                                    {
+                                        _sessionAudioAttachments.Insert(0, att);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (scrollViewer != null)
+                    {
+                        scrollViewer.UpdateLayout();
+                        double newExtentHeight = scrollViewer.ExtentHeight;
+                        scrollViewer.ScrollToVerticalOffset(newExtentHeight - oldExtentHeight);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"LoadOlderMessages error: {ex.Message}");
+            }
+            finally
+            {
+                _isLoadingOlderMessages = false;
+            }
         }
 
         #endregion

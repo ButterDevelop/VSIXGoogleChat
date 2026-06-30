@@ -20,10 +20,11 @@ namespace VSIXGoogleChat
 {
     public partial class ChatToolWindowControl : UserControl
     {
-        private const int MaxHistoryBlocks = 100;
+        private const int MaxHistoryBlocks = 1000;
         private static string FULL_FAKE_COMMAND = FakeCommandsGenerator.GenerateFakeCommand();
 
         private static readonly Regex DotnetRunRegex = new(@"dotnet\s+run\s+\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex ReplyRegex     = new(@"^\[Reply:\s*""(.*?)""\]\s*(.*)$", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private string _fakeCommand = string.Empty;
 
@@ -70,14 +71,31 @@ namespace VSIXGoogleChat
         private readonly SoundPlayer _successSound;
         private readonly SoundPlayer _errorSound;
 
-        private DispatcherTimer?     _mediaTimer;
-        private bool                 _isSliderDragging      = false;
-        private ChatAttachment?      _activeAudioAttachment;
-        private string?              _activeMediaLocalPath;
-        private HashSet<string>      _listenedVoiceMessages = [];
-        private bool                 _autoplayOnOpen        = false;
-        private List<ChatAttachment> _previewAttachments    = [];
-        private int                  _currentPreviewIndex   = 0;
+        private DispatcherTimer?           _mediaTimer;
+        private bool                       _isSliderDragging        = false;
+        private ChatAttachment?            _activeAudioAttachment;
+        private string?                    _activeMediaLocalPath;
+        private HashSet<string>            _listenedVoiceMessages   = [];
+        private bool                       _autoplayOnOpen          = false;
+        private List<ChatAttachment>       _previewAttachments      = [];
+        private int                        _currentPreviewIndex     = 0;
+        private double                     _currentSpeed            = 1.0;
+        private Dictionary<string, double> _voiceMessageTimings     = new(StringComparer.OrdinalIgnoreCase);
+        private bool                       _isMediaPanelCollapsed   = false;
+        private List<ChatAttachment>       _sessionAudioAttachments = [];
+        private string?                    _nextPageToken           = null;
+
+        private bool _isLoadingOlderMessages = false;
+        private string? _replyTargetText       = null;
+        private string? _replyTargetMessageId  = null;
+        private string? _replyTargetThreadName = null;
+
+        private readonly Dictionary<string, string>   _baseSpaceNames          = [];
+        private readonly Dictionary<string, DateTime> _lastMessageTimePerSpace = [];
+        private readonly Dictionary<string, int>      _unreadCountPerSpace     = [];
+        private int _otherSpacesPollCounter = 0;
+        private DispatcherTimer? _blinkingTimer = null;
+        private bool _isBlinkingState = false;
 
         private static readonly Dictionary<string, Brush> AnsiColorMap = new()
         {
@@ -123,6 +141,7 @@ namespace VSIXGoogleChat
 
             InitializeAudioPlayer();
             LoadListenedMessages();
+            LoadVoiceMessageTimings();
 
             DataObject.AddPastingHandler(this, OnPaste);
 
@@ -151,6 +170,12 @@ namespace VSIXGoogleChat
 
         private async void OnIdleTimerTick(object sender, EventArgs e)
         {
+            if (_mediaTimer != null && _mediaTimer.IsEnabled)
+            {
+                ResetIdleTimer();
+                return;
+            }
+
             if (!_isStealthMode)
             {
                 await ToggleStealthModeAsync();
@@ -171,6 +196,9 @@ namespace VSIXGoogleChat
             InputTextBox.Focus();
 
             await ClearAndSetFakeTerminalOutputAsync();
+
+            var scrollViewer = FindVisualChild<ScrollViewer>(HistoryRichTextBox);
+            scrollViewer?.ScrollChanged += ScrollViewer_ScrollChanged;
 
             try
             {
@@ -205,6 +233,8 @@ namespace VSIXGoogleChat
 
         private async void ChatToolWindowControl_Unloaded(object sender, RoutedEventArgs e)
         {
+            SaveVoiceMessageTimings();
+
             if (!_chatOptions.EnableNotifications)
                 await StopPollingMessagesAsync();
 
@@ -216,6 +246,7 @@ namespace VSIXGoogleChat
 
         private void RefreshHistory()
         {
+            _sessionAudioAttachments.Clear();
             lock (_pollingLock) { _lastMessageTime = DateTime.MinValue; }
             _firstLoadCompleted = false;
         }
@@ -228,16 +259,39 @@ namespace VSIXGoogleChat
             foreach (var space in spaces)
             {
                 string nickname = _chatOptions.GetSpaceNickname(space.Id);
-                if (!string.IsNullOrEmpty(nickname))
+                string baseName = !string.IsNullOrEmpty(nickname) ? nickname : space.Name;
+                _baseSpaceNames[space.Id] = baseName;
+
+                if (!_lastMessageTimePerSpace.ContainsKey(space.Id))
                 {
-                    space.Name = nickname;
+                    _lastMessageTimePerSpace[space.Id] = DateTime.UtcNow;
+                }
+                if (!_unreadCountPerSpace.ContainsKey(space.Id))
+                {
+                    _unreadCountPerSpace[space.Id] = 0;
                 }
             }
-
+            
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
             SpaceSelector.ItemsSource = spaces;
             var currentSpaceId = _chatService.GetCurrentSpace();
+            
+            if (string.IsNullOrEmpty(currentSpaceId) && spaces.Any())
+            {
+                currentSpaceId = spaces.First().Id;
+                _chatService.SetCurrentSpace(currentSpaceId);
+            }
+            
             _lastActiveSpaceId = currentSpaceId;
+
+            if (!string.IsNullOrEmpty(currentSpaceId))
+            {
+                _unreadCountPerSpace[currentSpaceId] = 0;
+            }
+
+            UpdateSpacesVisualIndicators();
+            StopSpaceSelectorBlinkingIfNoUnreads();
+
             SpaceSelector.SelectedItem = spaces.FirstOrDefault(s => s.Id == currentSpaceId);
         }
 
@@ -289,60 +343,84 @@ namespace VSIXGoogleChat
                             DateTime lastTime;
                             lock (_pollingLock) { lastTime = _lastMessageTime; }
 
-                            var newMessages = await _chatService.GetMessagesAsync(lastTime);
-
-                            if (newMessages.Any())
+                            List<ChatMessage> newMessages;
+                            bool refreshInProgress = !_firstLoadCompleted && lastTime == DateTime.MinValue;
+                            if (refreshInProgress)
                             {
-                                bool allMyMessages = newMessages.All(m => m.SenderName == _chatOptions.MyChatUsername);
+                                var (Messages, NextPageToken) = await _chatService.GetMessagesPageAsync(null, 30);
+                                newMessages = Messages;
+                                _nextPageToken = NextPageToken;
+                            }
+                            else
+                            {
+                                newMessages = await _chatService.GetMessagesAsync(lastTime);
+                            }
+                             if (newMessages.Any())
+                             {
+                                 bool allMyMessages = newMessages.All(m => m.SenderId == _chatOptions.MyChatUsername || m.SenderName == _chatOptions.MyChatUsername);
 
-                                if (_firstLoadCompleted && _chatOptions.EnableNotifications && !allMyMessages)
-                                {
-                                    await Application.Current.Dispatcher.InvokeAsync(() => _notificationSound.Play());
-                                }
+                                 if (_firstLoadCompleted && _chatOptions.EnableNotifications && !allMyMessages)
+                                 {
+                                     await Application.Current.Dispatcher.InvokeAsync(() => _notificationSound.Play());
+                                 }
 
-                                var messagesToProcess  = newMessages;
-                                bool refreshInProgress = !_firstLoadCompleted && lastTime == DateTime.MinValue;
-                                if (refreshInProgress)
-                                {
-                                    messagesToProcess = newMessages.Skip(Math.Max(0, newMessages.Count - 30)).ToList();
-                                    _firstLoadCompleted = true;
-                                    _suppressAutoScroll = true;
-                                }
+                                 var messagesToProcess = newMessages;
+                                 if (refreshInProgress)
+                                 {
+                                     _firstLoadCompleted = true;
+                                     _suppressAutoScroll = true;
+                                 }
 
-                                foreach (var msg in messagesToProcess)
-                                {
-                                    var color = string.IsNullOrEmpty(_chatOptions.MyChatUsername)
-                                        ? TerminalForeground
-                                        : (_chatOptions.MyChatUsername == msg.SenderName ? MY_COLOR : PARTNER_COLOR);
+                                 foreach (var msg in messagesToProcess)
+                                 {
+                                     if (token.IsCancellationRequested) break;
 
-                                    if (!_isSilentMode && !_isStealthMode)
-                                    {
-                                        bool isOwnMessage = _chatOptions.MyChatUsername == msg.SenderName;
-                                        bool hasAttachments = msg.Attachments != null && msg.Attachments.Any();
-                                        if (refreshInProgress)
-                                        {
-                                            _suppressAutoScroll = true;
-                                            await AppendMessageAsync(msg.Text, color, msg.CreateTime, msg.Attachments);
-                                            _suppressAutoScroll = false;
-                                        }
-                                        else if (!isOwnMessage || hasAttachments)
-                                        {
-                                            await AppendMessageAsync(msg.Text, color, msg.CreateTime, msg.Attachments);
-                                        }
-                                    }
+                                     bool isOwnMessage = !string.IsNullOrEmpty(_chatOptions.MyChatUsername) && 
+                                                         (msg.SenderId == _chatOptions.MyChatUsername || msg.SenderName == _chatOptions.MyChatUsername);
 
-                                    lock (_pollingLock)
-                                    {
-                                        if (msg.CreateTime > _lastMessageTime)
-                                            _lastMessageTime = msg.CreateTime;
-                                    }
-                                }
+                                     var color = isOwnMessage ? MY_COLOR : PARTNER_COLOR;
+
+                                     if (!_isSilentMode && !_isStealthMode)
+                                     {
+                                         bool hasAttachments = msg.Attachments != null && msg.Attachments.Any();
+                                         if (refreshInProgress)
+                                         {
+                                             _suppressAutoScroll = true;
+                                             await AppendMessageAsync(msg.SenderName, msg.Text, color, msg.CreateTime, msg.Attachments, msg.QuotedMessageText);
+                                             _suppressAutoScroll = false;
+                                         }
+                                         else if (!isOwnMessage || hasAttachments)
+                                         {
+                                             await AppendMessageAsync(msg.SenderName, msg.Text, color, msg.CreateTime, msg.Attachments, msg.QuotedMessageText);
+                                         }
+                                     }
+                                     
+                                     lock (_pollingLock)
+                                     {
+                                         if (msg.CreateTime > _lastMessageTime)
+                                         {
+                                             _lastMessageTime = msg.CreateTime;
+                                             string currentSpaceId = _chatService?.GetCurrentSpace() ?? "";
+                                             if (!string.IsNullOrEmpty(currentSpaceId))
+                                             {
+                                                 _lastMessageTimePerSpace[currentSpaceId] = _lastMessageTime;
+                                             }
+                                         }
+                                     }
+                                 }
 
                                 if (refreshInProgress && !_isSilentMode && !_isStealthMode)
                                 {
                                     _suppressAutoScroll = false;
                                     ScrollToEnd();
                                 }
+                            }
+
+                            _otherSpacesPollCounter++;
+                            if (_otherSpacesPollCounter >= 4)
+                            {
+                                _otherSpacesPollCounter = 0;
+                                _ = Task.Run(async () => await PollOtherSpacesAsync(token));
                             }
                         }
                     }
@@ -371,16 +449,11 @@ namespace VSIXGoogleChat
             if (_pollingCts != null)
             {
                 _pollingCts.Cancel();
-                if (_pollingTask != null)
-                {
-                    try { await _pollingTask; }
-                    catch (OperationCanceledException) { }
-                    catch (Exception ex) { Debug.WriteLine($"StopPolling error: {ex.Message}"); }
-                    _pollingTask = null;
-                }
                 _pollingCts.Dispose();
                 _pollingCts = null;
             }
+            _pollingTask = null;
+            await Task.CompletedTask;
         }
 
 
@@ -396,10 +469,8 @@ namespace VSIXGoogleChat
             };
         }
 
-        private async Task AddParagraphAndScrollAsync(Paragraph paragraph)
+        private void AddParagraphAndScroll(Paragraph paragraph)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
             var scrollViewer = FindVisualChild<ScrollViewer>(HistoryRichTextBox);
             bool wasAtBottom = true;
             if (scrollViewer != null)
@@ -448,11 +519,6 @@ namespace VSIXGoogleChat
 
         public async Task ToggleStealthModeAsync(bool isManual = false)
         {
-            if (isManual)
-            {
-                CloseMediaPanel(true);
-            }
-
             if (_isSilentMode) await ToggleSilentModeAsync(isManual);
 
             _isStealthMode = !_isStealthMode;
@@ -461,6 +527,12 @@ namespace VSIXGoogleChat
 
             if (_isStealthMode)
             {
+                CollapseMediaPanel();
+                _replyTargetText = null;
+                _replyTargetMessageId = null;
+                _replyTargetThreadName = null;
+                ReplyIndicatorBorder.Visibility = Visibility.Collapsed;
+
                 SpaceSelector.Visibility = Visibility.Collapsed;
                 _savedInputBeforeStealth = InputTextBox.Text;
                 InputTextBox.Clear();
@@ -475,6 +547,7 @@ namespace VSIXGoogleChat
             }
             else
             {
+                ExpandMediaPanel();
                 SpaceSelector.Visibility = Visibility.Visible;
                 ResetIdleTimer();
 
@@ -494,11 +567,6 @@ namespace VSIXGoogleChat
 
         public async Task ToggleSilentModeAsync(bool isManual = false)
         {
-            if (isManual)
-            {
-                CloseMediaPanel(true);
-            }
-
             if (_isStealthMode) await ToggleStealthModeAsync(isManual);
 
             _isSilentMode = !_isSilentMode;
@@ -507,6 +575,12 @@ namespace VSIXGoogleChat
 
             if (_isSilentMode)
             {
+                CollapseMediaPanel();
+                _replyTargetText = null;
+                _replyTargetMessageId = null;
+                _replyTargetThreadName = null;
+                ReplyIndicatorBorder.Visibility = Visibility.Collapsed;
+
                 SpaceSelector.Visibility = Visibility.Collapsed;
                 int caretPos = InputTextBox.CaretIndex;
 
@@ -525,6 +599,7 @@ namespace VSIXGoogleChat
             }
             else
             {
+                ExpandMediaPanel();
                 ResetIdleTimer();
 
                 ClearRichTextBox(HistoryRichTextBox);
@@ -559,6 +634,210 @@ namespace VSIXGoogleChat
                 else
                 {
                     AppendSystemMessageAsync("Notifications disabled, background polling will be stopped.").FireAndForget();
+                }
+            }
+        }
+
+        private void StartSpaceSelectorBlinking()
+        {
+            if (_blinkingTimer != null) return;
+
+            _blinkingTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(800)
+            };
+            _blinkingTimer.Tick += BlinkingTimer_Tick;
+            _blinkingTimer.Start();
+        }
+
+        private void StopSpaceSelectorBlinking()
+        {
+            if (_blinkingTimer == null) return;
+
+            _blinkingTimer.Stop();
+            _blinkingTimer = null;
+            
+            // Restore default color
+            SpaceSelector.Foreground = new SolidColorBrush(Color.FromRgb(0x5A, 0x82, 0x6B));
+        }
+
+        private void BlinkingTimer_Tick(object? sender, EventArgs e)
+        {
+            _isBlinkingState = !_isBlinkingState;
+            if (_isBlinkingState)
+            {
+                SpaceSelector.Foreground = new SolidColorBrush(Color.FromRgb(0x00, 0xCC, 0x66));
+            }
+            else
+            {
+                SpaceSelector.Foreground = new SolidColorBrush(Color.FromRgb(0x5A, 0x82, 0x6B));
+            }
+        }
+
+        private void StopSpaceSelectorBlinkingIfNoUnreads()
+        {
+            bool hasAnyUnread = _unreadCountPerSpace.Values.Any(count => count > 0);
+            if (!hasAnyUnread)
+            {
+                StopSpaceSelectorBlinking();
+            }
+        }
+
+        private void UpdateSpacesVisualIndicators()
+        {
+            if (SpaceSelector.ItemsSource == null) return;
+
+            var spaces = SpaceSelector.ItemsSource as IEnumerable<VSIXGoogleChat.Services.ChatSpace>;
+            if (spaces == null) return;
+
+            string currentSpaceId = _chatService?.GetCurrentSpace() ?? "";
+
+            foreach (var space in spaces)
+            {
+                if (_baseSpaceNames.TryGetValue(space.Id, out string baseName))
+                {
+                    int unread = _unreadCountPerSpace.TryGetValue(space.Id, out int val) ? val : 0;
+                    if (unread > 0 && space.Id != currentSpaceId)
+                    {
+                        space.Name = $"● {baseName} ({unread})";
+                    }
+                    else
+                    {
+                        space.Name = baseName;
+                    }
+                }
+            }
+
+            SpaceSelector.Items.Refresh();
+        }
+
+        private async Task PollOtherSpacesAsync(CancellationToken token)
+        {
+            if (_chatService == null) return;
+
+            // 1. Fetch latest spaces from the server dynamically!
+            var spaces = await _chatService.GetSpacesAsync();
+            if (spaces == null || !spaces.Any()) return;
+
+            // 2. Process on UI thread to update collections and items source if needed
+            List<VSIXGoogleChat.Services.ChatSpace> updatedSpaces = new();
+            string currentSpaceId = "";
+            bool needsItemsSourceUpdate = false;
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                currentSpaceId = _chatService.GetCurrentSpace();
+
+                // Get current spaces list
+                var currentSpaces = SpaceSelector.ItemsSource as IEnumerable<VSIXGoogleChat.Services.ChatSpace>;
+                var currentIds = currentSpaces?.Select(s => s.Id).ToHashSet() ?? new HashSet<string>();
+
+                foreach (var space in spaces)
+                {
+                    // If this is a new space, mark that we need to update ComboBox items source
+                    if (!currentIds.Contains(space.Id))
+                    {
+                        needsItemsSourceUpdate = true;
+                    }
+
+                    // Apply nickname if configured
+                    string nickname = _chatOptions?.GetSpaceNickname(space.Id) ?? "";
+                    string baseName = !string.IsNullOrEmpty(nickname) ? nickname : space.Name;
+                    _baseSpaceNames[space.Id] = baseName;
+
+                    if (!_lastMessageTimePerSpace.ContainsKey(space.Id))
+                    {
+                        _lastMessageTimePerSpace[space.Id] = DateTime.UtcNow;
+                    }
+                    if (!_unreadCountPerSpace.ContainsKey(space.Id))
+                    {
+                        _unreadCountPerSpace[space.Id] = 0;
+                    }
+
+                    // Set dynamic name with unread counts
+                    int unread = _unreadCountPerSpace.TryGetValue(space.Id, out int val) ? val : 0;
+                    if (unread > 0 && space.Id != currentSpaceId)
+                    {
+                        space.Name = $"● {baseName} ({unread})";
+                    }
+                    else
+                    {
+                        space.Name = baseName;
+                    }
+
+                    updatedSpaces.Add(space);
+                }
+
+                // If a space was removed from server, we also need to update ItemsSource
+                if (currentSpaces != null && currentSpaces.Count() != updatedSpaces.Count)
+                {
+                    needsItemsSourceUpdate = true;
+                }
+
+                if (needsItemsSourceUpdate)
+                {
+                    var selectedSpace = SpaceSelector.SelectedItem as VSIXGoogleChat.Services.ChatSpace;
+                    SpaceSelector.ItemsSource = updatedSpaces;
+                    if (selectedSpace != null)
+                    {
+                        SpaceSelector.SelectedItem = updatedSpaces.FirstOrDefault(s => s.Id == selectedSpace.Id);
+                    }
+                }
+                else
+                {
+                    // If no new/removed spaces, just update the names of the existing items and refresh
+                    if (currentSpaces != null)
+                    {
+                        foreach (var currentSpace in currentSpaces)
+                        {
+                            var matched = updatedSpaces.FirstOrDefault(s => s.Id == currentSpace.Id);
+                            if (matched != null)
+                            {
+                                currentSpace.Name = matched.Name;
+                            }
+                        }
+                        SpaceSelector.Items.Refresh();
+                    }
+                }
+            });
+
+            // 3. Poll each space for new messages
+            foreach (var space in updatedSpaces)
+            {
+                if (token.IsCancellationRequested) break;
+                if (space.Id == currentSpaceId) continue;
+
+                if (_lastMessageTimePerSpace.TryGetValue(space.Id, out DateTime lastTime))
+                {
+                    var newMsgs = await _chatService.GetMessagesForSpaceAsync(space.Id, lastTime);
+                    if (newMsgs != null && newMsgs.Any())
+                    {
+                        var newestMsg = newMsgs.OrderByDescending(m => m.CreateTime).First();
+                        _lastMessageTimePerSpace[space.Id] = newestMsg.CreateTime;
+
+                        var otherSenderMsgs = newMsgs.Where(m => m.SenderName != _chatOptions?.MyChatUsername).ToList();
+                        if (otherSenderMsgs.Any())
+                        {
+                            int currentVal = _unreadCountPerSpace.TryGetValue(space.Id, out int val) ? val : 0;
+                            _unreadCountPerSpace[space.Id] = currentVal + otherSenderMsgs.Count;
+
+                            if (_chatOptions != null && _chatOptions.EnableNotifications)
+                            {
+                                await Application.Current.Dispatcher.InvokeAsync(() => _notificationSound.Play());
+                            }
+
+                            await Application.Current.Dispatcher.InvokeAsync(() =>
+                            {
+                                // Apply unread formatting to the space name
+                                if (_baseSpaceNames.TryGetValue(space.Id, out string baseName))
+                                {
+                                    space.Name = $"● {baseName} ({_unreadCountPerSpace[space.Id]})";
+                                    SpaceSelector.Items.Refresh();
+                                }
+                                StartSpaceSelectorBlinking();
+                            });
+                        }
+                    }
                 }
             }
         }

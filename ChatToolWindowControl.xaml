@@ -172,21 +172,34 @@
                      ScrollViewer.HorizontalScrollBarVisibility="Hidden"
                      VerticalAlignment="Center" />
 
-            <TextBox x:Name="InputTextBox" 
-                     Grid.Column="1"
-                     Background="Transparent"
-                     Foreground="{StaticResource TerminalForeground}"
-                     CaretBrush="{StaticResource TerminalForeground}"
-                     BorderThickness="0"
-                     Padding="0"
-                     FontSize="12"
-                     TextWrapping="NoWrap"
-                     AcceptsReturn="False"
-                     VerticalAlignment="Center"
-                     ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                     SelectionChanged="InputTextBox_SelectionChanged"
-                     PreviewKeyDown="InputTextBox_PreviewKeyDown"
-                     TextChanged="InputTextBox_TextChanged" />
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border x:Name="ReplyIndicatorBorder" Grid.Row="0" Visibility="Collapsed" Background="#333337" Padding="5" Margin="0,0,0,5" CornerRadius="3">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Replying to: " Foreground="#808080" FontSize="11" />
+                        <TextBlock x:Name="ReplyIndicatorTextBlock" Text="" Foreground="#A0A0A0" FontSize="11" />
+                        <Button Content="x" Background="Transparent" Foreground="#808080" BorderThickness="0" Margin="10,0,0,0" Padding="0" Cursor="Hand" Click="CancelReply_Click" />
+                    </StackPanel>
+                </Border>
+                <TextBox x:Name="InputTextBox" 
+                         Grid.Row="1"
+                         Background="Transparent"
+                         Foreground="{StaticResource TerminalForeground}"
+                         CaretBrush="{StaticResource TerminalForeground}"
+                         BorderThickness="0"
+                         Padding="0"
+                         FontSize="12"
+                         TextWrapping="NoWrap"
+                         AcceptsReturn="False"
+                         VerticalAlignment="Center"
+                         ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                         SelectionChanged="InputTextBox_SelectionChanged"
+                         PreviewKeyDown="InputTextBox_PreviewKeyDown"
+                         TextChanged="InputTextBox_TextChanged" />
+            </Grid>
             <Popup x:Name="SuggestionsPopup"
                    PlacementTarget="{Binding ElementName=InputTextBox}"
                    Placement="Top"
@@ -240,9 +253,11 @@
                     </Grid.RowDefinitions>
 
                     <!-- Header -->
-                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                    <Grid Grid.Row="0" Margin="0,0,0,10" x:Name="MediaHeaderGrid">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="MediaTitleTextBlock" 
@@ -251,7 +266,9 @@
                                    FontWeight="Bold" 
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
-                        <Button Grid.Column="1" 
+                        <Button x:Name="CollapseMediaButton" Grid.Column="1" Content="^" Background="Transparent" Foreground="#808080" BorderThickness="0" Margin="0,0,5,0" Cursor="Hand" Click="CollapseMediaButton_Click"/>
+                        <Button x:Name="ExpandMediaButton" Grid.Column="2" Content="v" Background="Transparent" Foreground="#808080" BorderThickness="0" Margin="0,0,5,0" Cursor="Hand" Click="ExpandMediaButton_Click" Visibility="Collapsed"/>
+                        <Button Grid.Column="3" 
                                 Content="[ X ]" 
                                 Background="Transparent" 
                                 Foreground="#9C5B4A" 
@@ -426,6 +443,12 @@
                                             FontSize="11"
                                             FontWeight="Bold"
                                             Click="StopAudio_Click"/>
+
+                                    <TextBlock Text="Speed:" Foreground="#808080" FontSize="10" Margin="10,0,3,0" VerticalAlignment="Center"/>
+                                    <Button x:Name="Speed10Button" Content="1x" Background="Transparent" Foreground="#00CC66" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
+                                    <Button x:Name="Speed12Button" Content="1.2x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
+                                    <Button x:Name="Speed15Button" Content="1.5x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
+                                    <Button x:Name="Speed20Button" Content="2x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
                                 </StackPanel>
 
                                 <!-- Volume icon -->

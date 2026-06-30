@@ -181,6 +181,25 @@ namespace VSIXGoogleChat
                 }
                 if (string.IsNullOrEmpty(userInput)) return;
 
+                string targetReplyMsgId = _replyTargetMessageId;
+                string targetReplyThreadName = _replyTargetThreadName;
+                string targetReplyText = _replyTargetText;
+
+                // Reset the reply state
+                _replyTargetText = null;
+                _replyTargetMessageId = null;
+                _replyTargetThreadName = null;
+                ReplyIndicatorBorder.Visibility = Visibility.Collapsed;
+
+                // Prepend the reply prefix to the message sent to the server so it's visible in the browser quote
+                if (!string.IsNullOrEmpty(targetReplyText))
+                {
+                    if (!userInput.StartsWith("#"))
+                    {
+                        userInput = $"[Reply: \"{targetReplyText}\"] {userInput}";
+                    }
+                }
+
                 if (userInput.StartsWith("#file ", StringComparison.OrdinalIgnoreCase) ||
                     userInput.StartsWith("#upload ", StringComparison.OrdinalIgnoreCase))
                 {
@@ -384,7 +403,7 @@ namespace VSIXGoogleChat
 
                     try
                     {
-                        _ = SendMessageWithFeedbackAsync(userInput);
+                        _ = SendMessageWithFeedbackAsync(userInput, targetReplyThreadName, targetReplyMsgId);
                     }
                     catch (Exception ex)
                     {
@@ -395,13 +414,14 @@ namespace VSIXGoogleChat
                 }
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                await AppendMessageAsync(userInput, MY_COLOR, DateTime.UtcNow);
+                string senderName = string.IsNullOrEmpty(_chatOptions?.MyChatUsername) ? "Me" : _chatOptions.MyChatUsername;
+                await AppendMessageAsync(senderName, userInput, MY_COLOR, DateTime.UtcNow, null, targetReplyText);
                 tb.Clear();
-                _ = SendMessageWithFeedbackAsync(userInput);
+                _ = SendMessageWithFeedbackAsync(userInput, targetReplyThreadName, targetReplyMsgId);
             }
         }
 
-        private async Task<bool> SendMessageWithFeedbackAsync(string text)
+        private async Task<bool> SendMessageWithFeedbackAsync(string text, string? threadName = null, string? replyToMessageId = null)
         {
             if (_chatService == null)
             {
@@ -412,7 +432,7 @@ namespace VSIXGoogleChat
 
             try
             {
-                string? messageId = await _chatService.SendMessageAsync(text);
+                string? messageId = await _chatService.SendMessageAsync(text, threadName, replyToMessageId);
                 bool success = !string.IsNullOrEmpty(messageId);
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
@@ -533,6 +553,16 @@ namespace VSIXGoogleChat
 
         private void HistoryRichTextBox_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (e.RightButton == MouseButtonState.Pressed)
+            {
+                Point point = e.GetPosition(HistoryRichTextBox);
+                TextPointer textPointer = HistoryRichTextBox.GetPositionFromPoint(point, true);
+                if (textPointer != null)
+                {
+                    HistoryRichTextBox.CaretPosition = textPointer;
+                }
+            }
+
             if (e.LeftButton == MouseButtonState.Pressed && e.OriginalSource is FrameworkContentElement source)
             {
                 if (source.Parent is Hyperlink hyperlink)
@@ -553,6 +583,37 @@ namespace VSIXGoogleChat
 
         private void HistoryRichTextBox_LostFocus(object sender, RoutedEventArgs e)
         {
+            InputTextBox.Focus();
+        }
+
+        private void ReplyMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            var paragraph = HistoryRichTextBox.CaretPosition.Paragraph;
+            if (paragraph != null && paragraph.Tag is MessageTagInfo tagInfo && !string.IsNullOrWhiteSpace(tagInfo.Text))
+            {
+                string displayRef = tagInfo.Text.Trim();
+                // Replace any newlines with space to keep the quote on one line
+                displayRef = displayRef.Replace("\r", " ").Replace("\n", " ");
+                _replyTargetText = displayRef;
+                _replyTargetMessageId = tagInfo.MessageId;
+                _replyTargetThreadName = tagInfo.ThreadName;
+
+                if (displayRef.Length > 40)
+                {
+                    displayRef = displayRef.Substring(0, 37) + "...";
+                }
+                
+                ReplyIndicatorTextBlock.Text = $"Replying to: \"{displayRef}\"";
+                ReplyIndicatorBorder.Visibility = Visibility.Visible;
+
+                InputTextBox.Focus();
+            }
+        }
+
+        private void CancelReply_Click(object sender, RoutedEventArgs e)
+        {
+            _replyTargetText = null;
+            ReplyIndicatorBorder.Visibility = Visibility.Collapsed;
             InputTextBox.Focus();
         }
 
@@ -671,27 +732,45 @@ namespace VSIXGoogleChat
 
         private async void SpaceSelector_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            if (SpaceSelector.SelectedItem is VSIXGoogleChat.Services.ChatSpace selectedSpace && _chatService != null)
+            try
             {
-                if (selectedSpace.Id == _lastActiveSpaceId)
+                if (SpaceSelector.SelectedItem is VSIXGoogleChat.Services.ChatSpace selectedSpace && _chatService != null)
                 {
-                    return;
-                }
-
-                _lastActiveSpaceId = selectedSpace.Id;
-                _chatService.SetCurrentSpace(selectedSpace.Id);
-
-                if (!_isStealthMode && !_isSilentMode)
-                {
-                    await StopPollingMessagesAsync();
-                    ClearRichTextBox(HistoryRichTextBox);
-
-                    if (_chatOptions != null && _chatOptions.EnableNotifications)
+                    if (selectedSpace.Id == _lastActiveSpaceId)
                     {
+                        return;
+                    }
+
+                    _lastActiveSpaceId = selectedSpace.Id;
+                    _chatService.SetCurrentSpace(selectedSpace.Id);
+
+                    // Reset unread status for the active space
+                    if (_unreadCountPerSpace != null)
+                    {
+                        _unreadCountPerSpace[selectedSpace.Id] = 0;
+                    }
+
+                    // Defer visual updates to avoid WPF selection change transaction conflicts
+                    _ = Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        UpdateSpacesVisualIndicators();
+                        StopSpaceSelectorBlinkingIfNoUnreads();
+                    }, System.Windows.Threading.DispatcherPriority.Background);
+
+                    if (!_isStealthMode && !_isSilentMode)
+                    {
+                        await StopPollingMessagesAsync();
+                        ClearRichTextBox(HistoryRichTextBox);
+
                         RefreshHistory();
-                        StartPollingMessagesAsync();
+                        _ = StartPollingMessagesAsync();
                     }
                 }
+
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SpaceSelector_SelectionChanged error: {ex.Message}");
             }
         }
 

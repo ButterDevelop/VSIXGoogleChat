@@ -45,7 +45,7 @@ namespace VSIXGoogleChat.Services
 
             var service = new GoogleChatService(chatService, options);
 
-            if (string.IsNullOrEmpty(options.MyChatUsername))
+            if (string.IsNullOrEmpty(options.MyChatUsername) || options.MyChatUsername.StartsWith("ERROR:"))
             {
                 try
                 {
@@ -64,10 +64,14 @@ namespace VSIXGoogleChat.Services
                             options.SaveSettingsToStorage();
                         }
                     }
+                    else
+                    {
+                        throw new Exception("Access token is null or empty.");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Failed to auto-resolve MyChatUsername: {ex.Message}");
+                    options.MyChatUsername = "ERROR: " + ex.Message;
                 }
             }
 
@@ -78,6 +82,14 @@ namespace VSIXGoogleChat.Services
         {
             try
             {
+                string overrideFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VSIXInternalPowerShell", "my_id.txt");
+                if (!File.Exists(overrideFile)) overrideFile = Path.Combine("C:\\Users", Environment.UserName, "projects", "VSIXInternalPowerShell", "my_id.txt");
+                
+                if (File.Exists(overrideFile))
+                {
+                    return File.ReadAllText(overrideFile).Trim();
+                }
+
                 using var client = new System.Net.Http.HttpClient();
                 string url = $"https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={accessToken}";
                 var response = await client.GetAsync(url);
@@ -89,13 +101,21 @@ namespace VSIXGoogleChat.Services
                     {
                         return "users/" + match.Groups[1].Value;
                     }
+                    else
+                    {
+                        throw new Exception("JSON did not contain 'sub' claim: " + json);
+                    }
+                }
+                else
+                {
+                    string errContent = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"HTTP {response.StatusCode}: {errContent}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Failed to query tokeninfo: {ex.Message}");
+                throw new Exception($"GetMyUserIdAsync failed: {ex.Message}", ex);
             }
-            return null;
         }
 
         private static async Task<UserCredential> LoadOAuth2CredentialAsync(string clientSecretsPath)
@@ -122,7 +142,7 @@ namespace VSIXGoogleChat.Services
             );
         }
 
-        public async Task<string?> SendMessageAsync(string text)
+        public async Task<string?> SendMessageAsync(string text, string? threadName = null, string? replyToMessageId = null)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return null;
@@ -130,8 +150,29 @@ namespace VSIXGoogleChat.Services
             try
             {
                 var message = new Message { Text = text };
+                if (!string.IsNullOrEmpty(threadName))
+                {
+                    message.Thread = new Google.Apis.HangoutsChat.v1.Data.Thread { Name = threadName };
+                }
+                if (!string.IsNullOrEmpty(replyToMessageId))
+                {
+                    message.QuotedMessageMetadata = new QuotedMessageMetadata
+                    {
+                        Name = replyToMessageId
+                    };
+                }
                 var request = _chatService.Spaces.Messages.Create(message, _spaceId);
                 var response = await request.ExecuteAsync();
+
+                if (response.Sender != null && !string.IsNullOrEmpty(response.Sender.Name))
+                {
+                    if (string.IsNullOrEmpty(_options.MyChatUsername) || _options.MyChatUsername.StartsWith("ERROR:"))
+                    {
+                        _options.MyChatUsername = response.Sender.Name;
+                        _options.SaveSettingsToStorage();
+                    }
+                }
+
                 return response.Name;
             }
             catch (Exception ex)
@@ -143,6 +184,8 @@ namespace VSIXGoogleChat.Services
 
         public async Task<List<ChatMessage>> GetMessagesAsync(DateTime? lastMessageTime = null, int maxCount = 50)
         {
+            if (string.IsNullOrEmpty(_spaceId)) return [];
+
             var request = _chatService.Spaces.Messages.List(_spaceId);
             request.PageSize = maxCount;
             request.OrderBy = "create_time DESC";
@@ -157,8 +200,11 @@ namespace VSIXGoogleChat.Services
                     Id = m.Name,
                     Text = m.Text,
                     SenderName = GetSenderName(m),
+                    SenderId = m.Sender?.Name ?? "",
                     CreateTime = m.CreateTimeDateTimeOffset?.UtcDateTime ?? DateTime.MinValue,
                     HasAttachments = m.Attachment != null && m.Attachment.Any(),
+                    ThreadName = m.Thread?.Name ?? "",
+                    QuotedMessageText = m.QuotedMessageMetadata?.QuotedMessageSnapshot?.Text ?? "",
                     AttachmentMimeTypes = m.Attachment?.Select(a => a.ContentType).ToList() ?? [],
                     Attachments = m.Attachment?.Select(a => new ChatAttachment
                     {
@@ -177,6 +223,106 @@ namespace VSIXGoogleChat.Services
                 return allMessages.Where(m => m.CreateTime > lastMessageTime.Value).ToList();
             }
             return allMessages;
+        }
+
+        public async Task<List<ChatMessage>> GetMessagesForSpaceAsync(string spaceId, DateTime? lastMessageTime = null, int maxCount = 50)
+        {
+            if (string.IsNullOrEmpty(spaceId)) return [];
+            try
+            {
+                var request = _chatService.Spaces.Messages.List(spaceId);
+                request.PageSize = maxCount;
+                request.OrderBy = "create_time DESC";
+                var response = await request.ExecuteAsync();
+
+                if (response.Messages == null || !response.Messages.Any())
+                    return [];
+
+                var allMessages = response.Messages
+                    .Select(m => new ChatMessage
+                    {
+                        Id = m.Name,
+                        Text = m.Text,
+                        SenderName = GetSenderName(m),
+                        SenderId = m.Sender?.Name ?? "",
+                        CreateTime = m.CreateTimeDateTimeOffset?.UtcDateTime ?? DateTime.MinValue,
+                        HasAttachments = m.Attachment != null && m.Attachment.Any(),
+                        ThreadName = m.Thread?.Name ?? "",
+                        QuotedMessageText = m.QuotedMessageMetadata?.QuotedMessageSnapshot?.Text ?? "",
+                        AttachmentMimeTypes = m.Attachment?.Select(a => a.ContentType).ToList() ?? [],
+                        Attachments = m.Attachment?.Select(a => new ChatAttachment
+                        {
+                            Name = a.AttachmentDataRef?.ResourceName ?? a.Name ?? "",
+                            ContentName = a.ContentName ?? "",
+                            ContentType = a.ContentType ?? "",
+                            ContentUri = a.ThumbnailUri ?? "",
+                            MessageId = m.Name
+                        }).ToList() ?? []
+                    })
+                    .OrderBy(m => m.CreateTime)
+                    .ToList();
+
+                if (lastMessageTime.HasValue && lastMessageTime.Value > DateTime.MinValue)
+                {
+                    return allMessages.Where(m => m.CreateTime > lastMessageTime.Value).ToList();
+                }
+                return allMessages;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"GetMessagesForSpaceAsync error: {ex.Message}");
+                return [];
+            }
+        }
+
+        public async Task<(List<ChatMessage> Messages, string? NextPageToken)> GetMessagesPageAsync(string? pageToken, int maxCount = 50)
+        {
+            if (string.IsNullOrEmpty(_spaceId)) return ([], null);
+            try
+            {
+                var request = _chatService.Spaces.Messages.List(_spaceId);
+                request.PageSize = maxCount;
+                request.OrderBy = "create_time DESC";
+                if (!string.IsNullOrEmpty(pageToken))
+                {
+                    request.PageToken = pageToken;
+                }
+                var response = await request.ExecuteAsync();
+
+                if (response.Messages == null || !response.Messages.Any())
+                    return ([], response.NextPageToken);
+
+                var allMessages = response.Messages
+                    .Select(m => new ChatMessage
+                    {
+                        Id = m.Name,
+                        Text = m.Text,
+                        SenderName = GetSenderName(m),
+                        SenderId = m.Sender?.Name ?? "",
+                        CreateTime = m.CreateTimeDateTimeOffset?.UtcDateTime ?? DateTime.MinValue,
+                        HasAttachments = m.Attachment != null && m.Attachment.Any(),
+                        ThreadName = m.Thread?.Name ?? "",
+                        QuotedMessageText = m.QuotedMessageMetadata?.QuotedMessageSnapshot?.Text ?? "",
+                        AttachmentMimeTypes = m.Attachment?.Select(a => a.ContentType).ToList() ?? [],
+                        Attachments = m.Attachment?.Select(a => new ChatAttachment
+                        {
+                            Name = a.AttachmentDataRef?.ResourceName ?? a.Name ?? "",
+                            ContentName = a.ContentName ?? "",
+                            ContentType = a.ContentType ?? "",
+                            ContentUri = a.ThumbnailUri ?? "",
+                            MessageId = m.Name
+                        }).ToList() ?? []
+                    })
+                    .OrderBy(m => m.CreateTime)
+                    .ToList();
+
+                return (allMessages, response.NextPageToken);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"GetMessagesPageAsync error: {ex.Message}");
+                return ([], null);
+            }
         }
 
         public async Task<Stream?> DownloadAttachmentAsync(string resourceName)
@@ -208,9 +354,16 @@ namespace VSIXGoogleChat.Services
 
         public void SetCurrentSpace(string spaceId)
         {
-            _spaceId = spaceId;
-            if (!_spaceId.StartsWith("spaces/"))
-                _spaceId = "spaces/" + _spaceId;
+            if (string.IsNullOrWhiteSpace(spaceId))
+            {
+                _spaceId = "";
+            }
+            else
+            {
+                _spaceId = spaceId;
+                if (!_spaceId.StartsWith("spaces/"))
+                    _spaceId = "spaces/" + _spaceId;
+            }
         }
 
         public string GetCurrentSpace() => _spaceId;
@@ -386,6 +539,28 @@ namespace VSIXGoogleChat.Services
             {
                 Debug.WriteLine($"SendMessageWithAttachments error: {ex.Message}");
                 throw;
+            }
+        }
+
+        public async Task<bool> AddReactionAsync(string messageId, string emojiUnicode)
+        {
+            if (string.IsNullOrEmpty(messageId))
+                return false;
+
+            try
+            {
+                var reaction = new Reaction
+                {
+                    Emoji = new Emoji { Unicode = emojiUnicode }
+                };
+                var request = _chatService.Spaces.Messages.Reactions.Create(reaction, messageId);
+                await request.ExecuteAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"AddReaction error: {ex.Message}");
+                return false;
             }
         }
 

@@ -72,7 +72,7 @@ namespace VSIXGoogleChat
             return _listenedVoiceMessages.Contains(resourceName);
         }
 
-        private void MarkVoiceMessageListened(string resourceName, bool listened)
+        private void MarkVoiceMessageListened(string resourceName, bool listened, string? messageId = null)
         {
             if (string.IsNullOrEmpty(resourceName)) return;
             if (listened)
@@ -81,6 +81,11 @@ namespace VSIXGoogleChat
                 {
                     SaveListenedMessages();
                     UpdateVoiceMessageLinksInDoc(resourceName, "Listened");
+
+                    if (_chatService != null && !string.IsNullOrEmpty(messageId))
+                    {
+                        _ = _chatService.AddReactionAsync(messageId, "🎧");
+                    }
                 }
             }
             else
@@ -127,6 +132,8 @@ namespace VSIXGoogleChat
             AudioPlayerElement.MediaEnded += MediaPlayer_MediaEnded;
             AudioPlayerElement.MediaFailed += MediaPlayer_MediaFailed;
 
+            UpdateSpeedButtonsHighlight();
+
             _mediaTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromMilliseconds(200)
@@ -139,17 +146,35 @@ namespace VSIXGoogleChat
             if (AudioPlayerElement.NaturalDuration.HasTimeSpan)
             {
                 var duration = AudioPlayerElement.NaturalDuration.TimeSpan;
-                AudioDurationTextBlock.Text = $"Duration: {duration:mm\\:ss}";
+                AudioStatusTextBlock.Text = $"Voice Message ({duration:mm\\:ss})";
                 TimeTotalTextBlock.Text = $"{duration:mm\\:ss}";
                 AudioProgressSlider.Maximum = duration.TotalSeconds;
             }
             else
             {
-                AudioDurationTextBlock.Text = "Duration: Unknown";
+                AudioStatusTextBlock.Text = "Voice Message (Duration: Unknown)";
                 TimeTotalTextBlock.Text = "--:--";
             }
-            AudioProgressSlider.Value = 0;
-            TimeElapsedTextBlock.Text = "00:00";
+
+            double savedSeconds = 0;
+            if (_activeAudioAttachment != null)
+            {
+                savedSeconds = GetSavedVoiceMessageTiming(_activeAudioAttachment.Name);
+            }
+
+            if (savedSeconds > 0 && AudioPlayerElement.NaturalDuration.HasTimeSpan && savedSeconds < AudioPlayerElement.NaturalDuration.TimeSpan.TotalSeconds - 1)
+            {
+                AudioPlayerElement.Position = TimeSpan.FromSeconds(savedSeconds);
+                AudioProgressSlider.Value = savedSeconds;
+                TimeElapsedTextBlock.Text = $"{AudioPlayerElement.Position:mm\\:ss}";
+            }
+            else
+            {
+                AudioProgressSlider.Value = 0;
+                TimeElapsedTextBlock.Text = "00:00";
+            }
+
+            AudioPlayerElement.SpeedRatio = _currentSpeed;
 
             if (_autoplayOnOpen)
             {
@@ -162,62 +187,38 @@ namespace VSIXGoogleChat
         {
             _ = Dispatcher.BeginInvoke(new Action(() =>
             {
+                if (_activeAudioAttachment != null)
+                {
+                    SetVoiceMessageTiming(_activeAudioAttachment.Name, 0);
+                    SaveVoiceMessageTimings();
+                }
                 StopAudio();
                 if (_activeAudioAttachment != null)
                 {
-                    MarkVoiceMessageListened(_activeAudioAttachment.Name, true);
+                    MarkVoiceMessageListened(_activeAudioAttachment.Name, true, _activeAudioAttachment.MessageId);
                     ListenedCheckBox.IsChecked = true;
 
-                    PlayNextVoiceMessage();
+                    bool playedNext = PlayNextVoiceMessage();
+                    if (!playedNext)
+                    {
+                        CloseMediaPanel(false);
+                    }
                 }
             }));
         }
 
-        private void PlayNextVoiceMessage()
+        private bool PlayNextVoiceMessage()
         {
-            if (_activeAudioAttachment == null) return;
+            if (_activeAudioAttachment == null) return false;
 
-            bool foundCurrent = false;
-            ChatAttachment? nextAudioAttachment = null;
-
-            foreach (var block in HistoryRichTextBox.Document.Blocks)
+            int currentIndex = _sessionAudioAttachments.FindIndex(att => att.Name == _activeAudioAttachment.Name);
+            if (currentIndex >= 0 && currentIndex + 1 < _sessionAudioAttachments.Count)
             {
-                if (block is Paragraph paragraph)
-                {
-                    foreach (var inline in paragraph.Inlines)
-                    {
-                        if (inline is Hyperlink link && link.Tag is ChatAttachment att)
-                        {
-                            bool isAudio = att.ContentType.StartsWith("audio/") ||
-                                           att.ContentName.EndsWith(".m4a") ||
-                                           att.ContentName.EndsWith(".mp3") ||
-                                           att.ContentName.EndsWith(".wav") ||
-                                           att.ContentName.EndsWith(".ogg");
-
-                            if (isAudio)
-                            {
-                                if (foundCurrent)
-                                {
-                                    nextAudioAttachment = att;
-                                    break;
-                                }
-
-                                if (att.Name == _activeAudioAttachment.Name)
-                                {
-                                    foundCurrent = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                if (nextAudioAttachment != null)
-                    break;
-            }
-
-            if (nextAudioAttachment != null)
-            {
+                var nextAudioAttachment = _sessionAudioAttachments[currentIndex + 1];
                 _ = OpenMediaPreviewAsync(nextAudioAttachment);
+                return true;
             }
+            return false;
         }
 
         private void MediaPlayer_MediaFailed(object? sender, ExceptionRoutedEventArgs e)
@@ -232,12 +233,18 @@ namespace VSIXGoogleChat
             {
                 AudioProgressSlider.Value = AudioPlayerElement.Position.TotalSeconds;
                 TimeElapsedTextBlock.Text = $"{AudioPlayerElement.Position:mm\\:ss}";
+
+                if (_activeAudioAttachment != null)
+                {
+                    SetVoiceMessageTiming(_activeAudioAttachment.Name, AudioPlayerElement.Position.TotalSeconds);
+                }
             }
         }
 
         private void PlayAudio()
         {
             AudioPlayerElement.Play();
+            AudioPlayerElement.SpeedRatio = _currentSpeed;
             _mediaTimer?.Start();
             AudioStatusTextBlock.Text = "Playing Voice Message...";
         }
@@ -247,6 +254,12 @@ namespace VSIXGoogleChat
             AudioPlayerElement.Pause();
             _mediaTimer?.Stop();
             AudioStatusTextBlock.Text = "Paused";
+
+            if (_activeAudioAttachment != null && AudioPlayerElement.Position != null)
+            {
+                SetVoiceMessageTiming(_activeAudioAttachment.Name, AudioPlayerElement.Position.TotalSeconds);
+                SaveVoiceMessageTimings();
+            }
         }
 
         private void StopAudio()
@@ -271,6 +284,11 @@ namespace VSIXGoogleChat
 
         private void StopAudio_Click(object sender, RoutedEventArgs e)
         {
+            if (_activeAudioAttachment != null)
+            {
+                SetVoiceMessageTiming(_activeAudioAttachment.Name, 0);
+                SaveVoiceMessageTimings();
+            }
             StopAudio();
         }
 
@@ -283,13 +301,18 @@ namespace VSIXGoogleChat
         {
             _isSliderDragging = false;
             AudioPlayerElement.Position = TimeSpan.FromSeconds(AudioProgressSlider.Value);
+            if (_activeAudioAttachment != null)
+            {
+                SetVoiceMessageTiming(_activeAudioAttachment.Name, AudioProgressSlider.Value);
+                SaveVoiceMessageTimings();
+            }
         }
 
         private void ListenedCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             if (_activeAudioAttachment != null)
             {
-                MarkVoiceMessageListened(_activeAudioAttachment.Name, true);
+                MarkVoiceMessageListened(_activeAudioAttachment.Name, true, _activeAudioAttachment.MessageId);
             }
         }
 
@@ -303,6 +326,16 @@ namespace VSIXGoogleChat
 
         private void CloseMediaPanel(bool pauseOnly = false)
         {
+            if (_activeAudioAttachment != null && AudioPlayerElement.Position != null)
+            {
+                double pos = AudioPlayerElement.Position.TotalSeconds;
+                if (pos > 0)
+                {
+                    SetVoiceMessageTiming(_activeAudioAttachment.Name, pos);
+                    SaveVoiceMessageTimings();
+                }
+            }
+
             if (pauseOnly)
                 PauseAudio();
             else
@@ -402,6 +435,12 @@ namespace VSIXGoogleChat
             var att = _previewAttachments[_currentPreviewIndex];
 
             MediaPanel.Visibility = Visibility.Visible;
+
+            // Ensure the panel is expanded when opening new media
+            _isMediaPanelCollapsed = false;
+            CollapseMediaButton.Visibility = Visibility.Visible;
+            ExpandMediaButton.Visibility = Visibility.Collapsed;
+            MediaPanel.VerticalAlignment = VerticalAlignment.Stretch;
 
             ImagePreviewContainer.Visibility = Visibility.Collapsed;
             AudioPreviewGrid.Visibility = Visibility.Collapsed;
@@ -523,9 +562,24 @@ namespace VSIXGoogleChat
 
                 try
                 {
-                    _autoplayOnOpen = true;
-                    AudioPlayerElement.Source = new Uri(tempPath, UriKind.Absolute);
-                    MarkVoiceMessageListened(att.Name, true);
+                    var targetUri = new Uri(tempPath, UriKind.Absolute);
+                    if (AudioPlayerElement.Source == targetUri)
+                    {
+                        double savedSeconds = GetSavedVoiceMessageTiming(att.Name);
+                        if (savedSeconds > 0 && AudioPlayerElement.NaturalDuration.HasTimeSpan && savedSeconds < AudioPlayerElement.NaturalDuration.TimeSpan.TotalSeconds - 1)
+                        {
+                            AudioPlayerElement.Position = TimeSpan.FromSeconds(savedSeconds);
+                            AudioProgressSlider.Value = savedSeconds;
+                            TimeElapsedTextBlock.Text = $"{AudioPlayerElement.Position:mm\\:ss}";
+                        }
+                        PlayAudio();
+                    }
+                    else
+                    {
+                        _autoplayOnOpen = true;
+                        AudioPlayerElement.Source = targetUri;
+                    }
+                    MarkVoiceMessageListened(att.Name, true, att.MessageId);
                     ListenedCheckBox.IsChecked = true;
                 }
                 catch (Exception ex)
@@ -678,6 +732,167 @@ namespace VSIXGoogleChat
 
             writer.Flush();
             return ms.ToArray();
+        }
+
+        private void UpdateSpeedButtonsHighlight()
+        {
+            if (Speed10Button == null || Speed12Button == null || Speed15Button == null || Speed20Button == null)
+                return;
+
+            Speed10Button.Foreground = _currentSpeed == 1.0 ? new SolidColorBrush(Color.FromRgb(0x00, 0xCC, 0x66)) : new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
+            Speed12Button.Foreground = _currentSpeed == 1.2 ? new SolidColorBrush(Color.FromRgb(0x00, 0xCC, 0x66)) : new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
+            Speed15Button.Foreground = _currentSpeed == 1.5 ? new SolidColorBrush(Color.FromRgb(0x00, 0xCC, 0x66)) : new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
+            Speed20Button.Foreground = _currentSpeed == 2.0 ? new SolidColorBrush(Color.FromRgb(0x00, 0xCC, 0x66)) : new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
+
+            Speed10Button.FontWeight = _currentSpeed == 1.0 ? FontWeights.Bold : FontWeights.Normal;
+            Speed12Button.FontWeight = _currentSpeed == 1.2 ? FontWeights.Bold : FontWeights.Normal;
+            Speed15Button.FontWeight = _currentSpeed == 1.5 ? FontWeights.Bold : FontWeights.Normal;
+            Speed20Button.FontWeight = _currentSpeed == 2.0 ? FontWeights.Bold : FontWeights.Normal;
+        }
+
+        private void SpeedPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn)
+            {
+                string content = btn.Content.ToString();
+                if (content.Contains("1.0")) _currentSpeed = 1.0;
+                else if (content.Contains("1.2")) _currentSpeed = 1.2;
+                else if (content.Contains("1.5")) _currentSpeed = 1.5;
+                else if (content.Contains("2.0")) _currentSpeed = 2.0;
+
+                AudioPlayerElement.SpeedRatio = _currentSpeed;
+                UpdateSpeedButtonsHighlight();
+            }
+        }
+
+        private string GetVoiceMessageTimingsFilePath()
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string dir = Path.Combine(localAppData, "VSIXInternalPowerShell");
+            if (!Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+            return Path.Combine(dir, "voice_message_timings.txt");
+        }
+
+        private void LoadVoiceMessageTimings()
+        {
+            try
+            {
+                string path = GetVoiceMessageTimingsFilePath();
+                if (File.Exists(path))
+                {
+                    var lines = File.ReadAllLines(path);
+                    foreach (var line in lines)
+                    {
+                        var parts = line.Split('|');
+                        if (parts.Length == 2 && double.TryParse(parts[1], out double seconds))
+                        {
+                            _voiceMessageTimings[parts[0]] = seconds;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"LoadVoiceMessageTimings error: {ex.Message}");
+            }
+        }
+
+        private void SaveVoiceMessageTimings()
+        {
+            try
+            {
+                string path = GetVoiceMessageTimingsFilePath();
+                var lines = _voiceMessageTimings.Select(kvp => $"{kvp.Key}|{kvp.Value}");
+                File.WriteAllLines(path, lines);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"SaveVoiceMessageTimings error: {ex.Message}");
+            }
+        }
+
+        private double GetSavedVoiceMessageTiming(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return 0;
+            return _voiceMessageTimings.TryGetValue(name, out double secs) ? secs : 0;
+        }
+
+        private void SetVoiceMessageTiming(string name, double seconds)
+        {
+            if (string.IsNullOrEmpty(name)) return;
+            _voiceMessageTimings[name] = seconds;
+        }
+
+        private void CollapseMediaButton_Click(object sender, RoutedEventArgs e)
+        {
+            CollapseMediaPanel();
+        }
+
+        private void ExpandMediaButton_Click(object sender, RoutedEventArgs e)
+        {
+            ExpandMediaPanel();
+        }
+
+        private void CollapseMediaPanel()
+        {
+            if (MediaPanel.Visibility != Visibility.Visible || _isMediaPanelCollapsed)
+                return;
+
+            _isMediaPanelCollapsed = true;
+            CollapseMediaButton.Visibility = Visibility.Collapsed;
+            ExpandMediaButton.Visibility = Visibility.Visible;
+
+            ImagePreviewContainer.Visibility = Visibility.Collapsed;
+            AudioPreviewGrid.Visibility = Visibility.Collapsed;
+            AudioControlsBorder.Visibility = Visibility.Collapsed;
+            FilePreviewGrid.Visibility = Visibility.Collapsed;
+
+            MediaTitleTextBlock.Visibility = Visibility.Collapsed;
+            MediaHeaderGrid.Margin = new Thickness(0);
+            MediaPanel.Width = 75;
+
+            MediaPanel.VerticalAlignment = VerticalAlignment.Top;
+        }
+
+        private void ExpandMediaPanel()
+        {
+            if (MediaPanel.Visibility != Visibility.Visible || !_isMediaPanelCollapsed)
+                return;
+
+            _isMediaPanelCollapsed = false;
+            CollapseMediaButton.Visibility = Visibility.Visible;
+            ExpandMediaButton.Visibility = Visibility.Collapsed;
+
+            MediaTitleTextBlock.Visibility = Visibility.Visible;
+            MediaHeaderGrid.Margin = new Thickness(0, 0, 0, 10);
+            MediaPanel.Width = 240;
+
+            MediaPanel.VerticalAlignment = VerticalAlignment.Stretch;
+
+            RestoreActiveMediaVisibility();
+        }
+
+        private void RestoreActiveMediaVisibility()
+        {
+            if (_activeAudioAttachment != null)
+            {
+                AudioPreviewGrid.Visibility = Visibility.Visible;
+                AudioControlsBorder.Visibility = Visibility.Visible;
+            }
+            else if (_activeMediaLocalPath != null)
+            {
+                if (_previewAttachments.Count > 0 && _previewAttachments[_currentPreviewIndex].ContentType.StartsWith("image/"))
+                {
+                    ImagePreviewContainer.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    FilePreviewGrid.Visibility = Visibility.Visible;
+                }
+            }
         }
 
         #endregion
