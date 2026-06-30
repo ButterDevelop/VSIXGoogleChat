@@ -19,13 +19,14 @@ Thus, VSIXGoogleChat was born. To anyone casually looking at your screen, it jus
   - **Fake Output**: Displays highly realistic simulated `dotnet run` commands and build logs.
   - **Real Terminal**: Runs a live, hidden background PowerShell (`pwsh.exe`) instance, allowing you to run actual shell commands with full ANSI color support.
 - **Silent Mode**: Mask your typing by displaying fake C# compilation messages on-screen while sending your real text secretly to Google Chat.
-- **Spaces Selector**: Easily switch spaces or direct messages via a sleek, dark-themed dropdown. It dynamically resolves cryptic Google Chat space IDs to show the actual display names of your DM partners. You can also assign a custom nickname to any space/DM using the `#setname <Nickname>` command (or just `#setname` without arguments to clear it).
+- **Seamless Dialogue Switching**: Instantly switch between chats via a fully customized, dark-themed space selector that preserves history scrolling state, prevents double-loading, and uses non-blocking asynchronous threads to eliminate UI freezes.
 - **Upload & Send Multiple Files**: Send single or multiple files/images by typing `#file "C:\path1.png", C:\path2.png` or `#upload "C:\path1.png", C:\path2.png` (supports comma-separated lists of paths, with or without quotes, and optional message at the end).
 - **Drag & Drop / Clipboard Support**: Drag and drop multiple files anywhere onto the chat window to send them instantly. Paste multiple files or raw screenshots directly from your clipboard using `Ctrl+V` or the right-click context menu.
-- **Smart Chat Scrolling**: The chat list scrolls to the bottom on new messages only if you are already scrolled to the bottom. If you scroll up to read the history, your view remains undisturbed.
+- **Smart Chat Scrolling & Deduplication**: The chat list scrolls to the bottom on new messages only if you are already scrolled to the bottom. Integrates a message deduplication layer using a unique ID tracker to prevent double history loads when reading older messages.
 - **Built-in Media Previewer**:
-  - **Voice & Audio Messages**: Listen to voice notes directly in the extension. Mark them as listened, and control volume.
-  - **Dual Image Preview Modes**: Click images in the preview panel to toggle between **Fit to Window** (fits the preview pane completely) and **Inspect Mode** (scales to fill the panel by its smaller side with smooth scrolling).
+  - **Voice & Audio Messages**: Listen to voice notes directly in the extension. Mark them as listened, adjust volume, and control playback speed (1x, 1.2x, 1.5x, 2x) on a dedicated, clean footer panel.
+  - **Positional Image Zoom**: Click images in the preview panel to toggle between **Fit to Window** and **Inspect Mode** (scales to 2.5x of the fitted size, centering the viewport on the exact coordinates where you clicked, with smooth dual-axis scrolling).
+- **Secure Identity Storage**: Saves your Google Chat user identity (`my_id`) directly into the Visual Studio registry settings store via standard `DialogPage` persistence, removing local temporary files.
 - **Quick Hide**: Press `Esc` to instantly close media previews or cancel multi-line inputs.
 
 ## 📥 Installation

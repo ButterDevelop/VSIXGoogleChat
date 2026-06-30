@@ -380,16 +380,58 @@ namespace VSIXGoogleChat
 
         private void ImagePreviewBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (PreviewImage.Stretch == Stretch.Uniform)
+            if (PreviewImage.Source == null) return;
+
+            // Reset ScaleTransform to 1.0 since we are sizing the image directly
+            ImageScale.ScaleX = 1.0;
+            ImageScale.ScaleY = 1.0;
+
+            if (double.IsNaN(PreviewImage.Width) && double.IsNaN(PreviewImage.Height))
             {
-                // Mode 2: Scale the image to fill the viewport (aligning by the smaller side) and enable scrolling
+                // Zoom In: Determine aspect ratios
+                double imgWidth = PreviewImage.Source.Width;
+                double imgHeight = PreviewImage.Source.Height;
+                if (imgWidth <= 0 || imgHeight <= 0) return;
+
+                double viewportWidth = ImageScrollViewer.ViewportWidth;
+                double viewportHeight = ImageScrollViewer.ViewportHeight;
+                if (viewportWidth <= 0 || viewportHeight <= 0) return;
+
+                // Calculate click position relative to current actual image size (fitted)
+                Point clickPos = e.GetPosition(PreviewImage);
+                double pctX = clickPos.X / PreviewImage.ActualWidth;
+                double pctY = clickPos.Y / PreviewImage.ActualHeight;
+
+                // Calculate fitted size of the image inside the viewport
+                double scale = Math.Min(viewportWidth / imgWidth, viewportHeight / imgHeight);
+                double fitWidth = imgWidth * scale;
+                double fitHeight = imgHeight * scale;
+
+                // Zoom In: Scale to 2.5x of the fitted size, but ensure it is at least the viewport size to eliminate empty side bars
+                double zoomFactor = 2.5;
+                PreviewImage.Width = Math.Max(fitWidth * zoomFactor, viewportWidth);
+                PreviewImage.Height = Math.Max(fitHeight * zoomFactor, viewportHeight);
                 PreviewImage.Stretch = Stretch.UniformToFill;
+
+                // Enable scrollbars in both directions
                 ImageScrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
                 ImageScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+
+                // Force layout update to recalculate scroll bounds
+                ImageScrollViewer.UpdateLayout();
+
+                // Scroll to center the clicked point
+                double targetX = PreviewImage.Width * pctX - viewportWidth / 2;
+                double targetY = PreviewImage.Height * pctY - viewportHeight / 2;
+
+                ImageScrollViewer.ScrollToHorizontalOffset(targetX);
+                ImageScrollViewer.ScrollToVerticalOffset(targetY);
             }
             else
             {
-                // Mode 1: Scale the image to fit entirely inside the viewport and disable scrollbars
+                // Zoom Out: Revert to auto sizing (Stretch.Uniform handles the fitting)
+                PreviewImage.Width = double.NaN;
+                PreviewImage.Height = double.NaN;
                 PreviewImage.Stretch = Stretch.Uniform;
                 ImageScrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
                 ImageScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -527,6 +569,8 @@ namespace VSIXGoogleChat
                     PreviewImage.Source = bitmap;
 
                     // Revert to fit-to-window view by default when loading a new image
+                    PreviewImage.Width = double.NaN;
+                    PreviewImage.Height = double.NaN;
                     PreviewImage.Stretch = Stretch.Uniform;
                     ImageScale.ScaleX = 1.0;
                     ImageScale.ScaleY = 1.0;

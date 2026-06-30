@@ -719,8 +719,7 @@ namespace VSIXGoogleChat
         {
             if (SpaceSelector.ItemsSource == null) return;
 
-            var spaces = SpaceSelector.ItemsSource as IEnumerable<VSIXGoogleChat.Services.ChatSpace>;
-            if (spaces == null) return;
+            if (SpaceSelector.ItemsSource is not IEnumerable<ChatSpace> spaces) return;
 
             string currentSpaceId = _chatService?.GetCurrentSpace() ?? "";
 
@@ -752,7 +751,7 @@ namespace VSIXGoogleChat
             if (spaces == null || !spaces.Any()) return;
 
             // 2. Process on UI thread to update collections and items source if needed
-            List<VSIXGoogleChat.Services.ChatSpace> updatedSpaces = new();
+            List<ChatSpace> updatedSpaces = [];
             string currentSpaceId = "";
             bool needsItemsSourceUpdate = false;
 
@@ -761,8 +760,8 @@ namespace VSIXGoogleChat
                 currentSpaceId = _chatService.GetCurrentSpace();
 
                 // Get current spaces list
-                var currentSpaces = SpaceSelector.ItemsSource as IEnumerable<VSIXGoogleChat.Services.ChatSpace>;
-                var currentIds = currentSpaces?.Select(s => s.Id).ToHashSet() ?? new HashSet<string>();
+                var currentSpaces = SpaceSelector.ItemsSource as IEnumerable<ChatSpace>;
+                var currentIds = currentSpaces?.Select(s => s.Id).ToHashSet() ?? [];
 
                 foreach (var space in spaces)
                 {
@@ -808,9 +807,8 @@ namespace VSIXGoogleChat
 
                 if (needsItemsSourceUpdate && !token.IsCancellationRequested)
                 {
-                    var selectedSpace = SpaceSelector.SelectedItem as VSIXGoogleChat.Services.ChatSpace;
                     SpaceSelector.ItemsSource = updatedSpaces;
-                    if (selectedSpace != null)
+                    if (SpaceSelector.SelectedItem is ChatSpace selectedSpace)
                     {
                         SpaceSelector.SelectedItem = updatedSpaces.FirstOrDefault(s => s.Id == selectedSpace.Id);
                     }
@@ -873,6 +871,5 @@ namespace VSIXGoogleChat
                 }
             }
         }
-
     }
 }
