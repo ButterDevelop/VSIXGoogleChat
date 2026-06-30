@@ -85,10 +85,10 @@ namespace VSIXGoogleChat
         private List<ChatAttachment>       _sessionAudioAttachments = [];
         private string?                    _nextPageToken           = null;
 
-        private bool _isLoadingOlderMessages = false;
-        private string? _replyTargetText       = null;
-        private string? _replyTargetMessageId  = null;
-        private string? _replyTargetThreadName = null;
+        private bool    _isLoadingOlderMessages = false;
+        private string? _replyTargetText        = null;
+        private string? _replyTargetMessageId   = null;
+        private string? _replyTargetThreadName  = null;
 
         private readonly Dictionary<string, string>   _baseSpaceNames          = [];
         private readonly Dictionary<string, DateTime> _lastMessageTimePerSpace = [];
@@ -446,6 +446,8 @@ namespace VSIXGoogleChat
 
         private async Task StopPollingMessagesAsync()
         {
+            var taskToWait = _pollingTask;
+
             if (_pollingCts != null)
             {
                 _pollingCts.Cancel();
@@ -453,7 +455,14 @@ namespace VSIXGoogleChat
                 _pollingCts = null;
             }
             _pollingTask = null;
-            await Task.CompletedTask;
+
+            // Actually wait for the old task to finish so it doesn't race with the new one
+            if (taskToWait != null)
+            {
+                try { await taskToWait.ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"StopPolling wait error: {ex.Message}"); }
+            }
         }
 
 
@@ -774,7 +783,7 @@ namespace VSIXGoogleChat
                     needsItemsSourceUpdate = true;
                 }
 
-                if (needsItemsSourceUpdate)
+                if (needsItemsSourceUpdate && !token.IsCancellationRequested)
                 {
                     var selectedSpace = SpaceSelector.SelectedItem as VSIXGoogleChat.Services.ChatSpace;
                     SpaceSelector.ItemsSource = updatedSpaces;

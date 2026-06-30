@@ -82,14 +82,6 @@ namespace VSIXGoogleChat.Services
         {
             try
             {
-                string overrideFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VSIXInternalPowerShell", "my_id.txt");
-                if (!File.Exists(overrideFile)) overrideFile = Path.Combine("C:\\Users", Environment.UserName, "projects", "VSIXInternalPowerShell", "my_id.txt");
-                
-                if (File.Exists(overrideFile))
-                {
-                    return File.ReadAllText(overrideFile).Trim();
-                }
-
                 using var client = new System.Net.Http.HttpClient();
                 string url = $"https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={accessToken}";
                 var response = await client.GetAsync(url);

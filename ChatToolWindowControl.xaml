@@ -328,10 +328,9 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <!-- Line 1: Status & Duration -->
+                            <!-- Line 1: Status -->
                             <StackPanel Grid.Row="0" Margin="0,0,0,6">
                                 <TextBlock x:Name="AudioStatusTextBlock" Text="Voice Message" Foreground="#A0A0A0" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"/>
-                                <TextBlock x:Name="AudioDurationTextBlock" Text="Duration: --:--" Foreground="#808080" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,2,0,0"/>
                             </StackPanel>
                             <!-- Line 2: Listened CheckBox -->
                             <CheckBox x:Name="ListenedCheckBox" 
@@ -372,10 +371,10 @@
                         </Grid>
                     </Grid>
 
-                    <!-- Audio Player Controls Footer -->
                     <Border Grid.Row="2" x:Name="AudioControlsBorder" Visibility="Collapsed" BorderBrush="#333333" BorderThickness="0,1,0,0" Padding="0,5,0,0" Margin="0,5,0,0">
                         <Grid>
                             <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
@@ -401,8 +400,8 @@
                                 <TextBlock Grid.Column="2" x:Name="TimeTotalTextBlock" Text="00:00" Foreground="#808080" FontSize="10" VerticalAlignment="Center"/>
                             </Grid>
 
-                            <!-- Buttons + Volume Row -->
-                            <Grid Grid.Row="1" Margin="0,2,0,0">
+                            <!-- Play/Pause/Stop + Volume Row -->
+                            <Grid Grid.Row="1" Margin="0,2,0,4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -443,12 +442,6 @@
                                             FontSize="11"
                                             FontWeight="Bold"
                                             Click="StopAudio_Click"/>
-
-                                    <TextBlock Text="Speed:" Foreground="#808080" FontSize="10" Margin="10,0,3,0" VerticalAlignment="Center"/>
-                                    <Button x:Name="Speed10Button" Content="1x" Background="Transparent" Foreground="#00CC66" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
-                                    <Button x:Name="Speed12Button" Content="1.2x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
-                                    <Button x:Name="Speed15Button" Content="1.5x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
-                                    <Button x:Name="Speed20Button" Content="2x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
                                 </StackPanel>
 
                                 <!-- Volume icon -->
@@ -462,6 +455,15 @@
                                         Height="18"
                                         ValueChanged="VolumeSlider_ValueChanged" />
                             </Grid>
+
+                            <!-- Speed Row -->
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,2,0,0">
+                                <TextBlock Text="Speed:" Foreground="#808080" FontSize="10" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                <Button x:Name="Speed10Button" Content="1x"   Background="Transparent" Foreground="#00CC66" BorderThickness="0" FontSize="10" FontWeight="Bold" Margin="2,0" Padding="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
+                                <Button x:Name="Speed12Button" Content="1.2x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Padding="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
+                                <Button x:Name="Speed15Button" Content="1.5x" Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Padding="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
+                                <Button x:Name="Speed20Button" Content="2x"   Background="Transparent" Foreground="#808080" BorderThickness="0" FontSize="10" Margin="2,0" Padding="2,0" Cursor="Hand" Click="SpeedPreset_Click"/>
+                            </StackPanel>
                         </Grid>
                     </Border>
                 </Grid>

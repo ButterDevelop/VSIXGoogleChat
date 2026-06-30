@@ -754,11 +754,10 @@ namespace VSIXGoogleChat
         {
             if (sender is Button btn)
             {
-                string content = btn.Content.ToString();
-                if (content.Contains("1.0")) _currentSpeed = 1.0;
-                else if (content.Contains("1.2")) _currentSpeed = 1.2;
-                else if (content.Contains("1.5")) _currentSpeed = 1.5;
-                else if (content.Contains("2.0")) _currentSpeed = 2.0;
+                if (btn == Speed10Button)       _currentSpeed = 1.0;
+                else if (btn == Speed12Button)  _currentSpeed = 1.2;
+                else if (btn == Speed15Button)  _currentSpeed = 1.5;
+                else if (btn == Speed20Button)  _currentSpeed = 2.0;
 
                 AudioPlayerElement.SpeedRatio = _currentSpeed;
                 UpdateSpeedButtonsHighlight();
