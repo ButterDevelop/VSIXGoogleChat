@@ -3,15 +3,15 @@ using Google.Apis.HangoutsChat.v1;
 using Google.Apis.HangoutsChat.v1.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
+using Microsoft.VisualStudio.Shell;
 using System;
-using VSIXGoogleChat;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Text.RegularExpressions;
 
 namespace VSIXGoogleChat.Services
 {
@@ -57,10 +57,11 @@ namespace VSIXGoogleChat.Services
 
                     if (!string.IsNullOrEmpty(accessToken))
                     {
-                        string? myUserId = await service.GetMyUserIdAsync(accessToken);
+                        string? myUserId = await service.GetMyUserIdAsync(accessToken!);
                         if (!string.IsNullOrEmpty(myUserId))
                         {
-                            options.MyChatUsername = myUserId;
+                            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                            options.MyChatUsername = myUserId!;
                             options.SaveSettingsToStorage();
                         }
                     }
@@ -160,6 +161,7 @@ namespace VSIXGoogleChat.Services
                 {
                     if (string.IsNullOrEmpty(_options.MyChatUsername) || _options.MyChatUsername.StartsWith("ERROR:"))
                     {
+                        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                         _options.MyChatUsername = response.Sender.Name;
                         _options.SaveSettingsToStorage();
                     }

@@ -547,6 +547,29 @@ namespace VSIXGoogleChat
 
         private void PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
+            // If the dropdown is open, do not steal focus so clicks inside the popup are processed
+            if (SpaceSelector != null && SpaceSelector.IsDropDownOpen)
+                return;
+
+            if (SpaceSelector != null && e.OriginalSource is DependencyObject depObj)
+            {
+                var parent = depObj;
+                while (parent != null)
+                {
+                    if (parent == SpaceSelector)
+                        return;
+
+                    if (parent is Visual || parent is System.Windows.Media.Media3D.Visual3D)
+                    {
+                        parent = VisualTreeHelper.GetParent(parent);
+                    }
+                    else
+                    {
+                        parent = LogicalTreeHelper.GetParent(parent);
+                    }
+                }
+            }
+
             if (!InputTextBox.IsKeyboardFocused)
                 InputTextBox.Focus();
         }
@@ -734,7 +757,10 @@ namespace VSIXGoogleChat
         {
             try
             {
-                if (SpaceSelector.SelectedItem is VSIXGoogleChat.Services.ChatSpace selectedSpace && _chatService != null)
+                var selectedSpace = SpaceSelector.SelectedItem as VSIXGoogleChat.Services.ChatSpace;
+                System.IO.File.AppendAllText("C:\\Users\\m.lyutikov\\projects\\VSIXInternalPowerShell\\selection_changed.txt", 
+                    $"[{DateTime.Now:HH:mm:ss.fff}] SelectedItem ID: {selectedSpace?.Id ?? "null"}, _lastActiveSpaceId: {_lastActiveSpaceId ?? "null"}, isSame: {selectedSpace?.Id == _lastActiveSpaceId}, isSilent: {_isSilentMode}, isStealth: {_isStealthMode}{Environment.NewLine}");
+                if (selectedSpace != null && _chatService != null)
                 {
                     if (selectedSpace.Id == _lastActiveSpaceId)
                     {

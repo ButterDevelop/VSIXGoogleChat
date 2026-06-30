@@ -45,6 +45,7 @@ namespace VSIXGoogleChat
         private static readonly SolidColorBrush SYSTEM_COLOR       = new(Color.FromRgb(0x66, 0x66, 0xFF));
         private static readonly SolidColorBrush DOTNET_RUN_COLOR   = new(Color.FromRgb(0xF9, 0xF1, 0xA5));
         private static readonly SolidColorBrush TIME_COLOR         = new(Color.FromRgb(0x80, 0x80, 0x80));
+
         private const double TerminalFontSize = 12;
         
         public event Action<bool>? RequestWindowVisibility;
@@ -125,6 +126,12 @@ namespace VSIXGoogleChat
         static ChatToolWindowControl()
         {
             RenderOptions.ProcessRenderMode = RenderMode.Default;
+            TerminalForeground.Freeze();
+            PARTNER_COLOR.Freeze();
+            MY_COLOR.Freeze();
+            SYSTEM_COLOR.Freeze();
+            DOTNET_RUN_COLOR.Freeze();
+            TIME_COLOR.Freeze();
         }
 
         public ChatToolWindowControl()

@@ -118,7 +118,7 @@
                                                               Margin="0,0,15,0" 
                                                               VerticalAlignment="Center" />
                                             
-                                            <Popup Name="Popup" Grid.ColumnSpan="2" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                            <Popup x:Name="PART_Popup" Grid.ColumnSpan="2" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                                                 <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="180" MaxHeight="300" Margin="0,2,0,0">
                                                     <Border x:Name="DropDownBorder" Background="#252526" BorderThickness="1" BorderBrush="#3E3E42" CornerRadius="3">
                                                         <Border.Effect>
@@ -126,7 +126,7 @@
                                                         </Border.Effect>
                                                     </Border>
                                                     <ScrollViewer Margin="2" SnapsToDevicePixels="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
                                                     </ScrollViewer>
                                                 </Grid>
                                             </Popup>
