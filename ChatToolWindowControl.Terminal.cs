@@ -527,6 +527,17 @@ namespace VSIXGoogleChat
                     for (int i = olderMessages.Count - 1; i >= 0; i--)
                     {
                         var msg = olderMessages[i];
+                        
+                        if (!string.IsNullOrEmpty(msg.Id))
+                        {
+                            lock (_displayedMessageIds)
+                            {
+                                if (_displayedMessageIds.Contains(msg.Id))
+                                    continue;
+                                _displayedMessageIds.Add(msg.Id);
+                            }
+                        }
+
                         var color = string.IsNullOrEmpty(_chatOptions.MyChatUsername)
                             ? TerminalForeground
                             : (_chatOptions.MyChatUsername == msg.SenderName ? MY_COLOR : PARTNER_COLOR);

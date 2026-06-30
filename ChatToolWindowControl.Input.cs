@@ -758,8 +758,6 @@ namespace VSIXGoogleChat
             try
             {
                 var selectedSpace = SpaceSelector.SelectedItem as VSIXGoogleChat.Services.ChatSpace;
-                System.IO.File.AppendAllText("C:\\Users\\m.lyutikov\\projects\\VSIXInternalPowerShell\\selection_changed.txt", 
-                    $"[{DateTime.Now:HH:mm:ss.fff}] SelectedItem ID: {selectedSpace?.Id ?? "null"}, _lastActiveSpaceId: {_lastActiveSpaceId ?? "null"}, isSame: {selectedSpace?.Id == _lastActiveSpaceId}, isSilent: {_isSilentMode}, isStealth: {_isStealthMode}{Environment.NewLine}");
                 if (selectedSpace != null && _chatService != null)
                 {
                     if (selectedSpace.Id == _lastActiveSpaceId)

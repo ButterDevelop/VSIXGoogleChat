@@ -55,6 +55,7 @@ namespace VSIXGoogleChat
         private Task?                    _pollingTask;
         private DateTime                 _lastMessageTime    = DateTime.MinValue;
         private bool                     _firstLoadCompleted = false;
+        private readonly HashSet<string> _displayedMessageIds = new();
 
         private readonly DispatcherTimer _idleTimer = new();
         private const int IdleTimeoutMs = 30000; // 30 secs
@@ -255,6 +256,7 @@ namespace VSIXGoogleChat
         {
             _sessionAudioAttachments.Clear();
             lock (_pollingLock) { _lastMessageTime = DateTime.MinValue; }
+            lock (_displayedMessageIds) { _displayedMessageIds.Clear(); }
             _firstLoadCompleted = false;
         }
 
@@ -381,6 +383,16 @@ namespace VSIXGoogleChat
                                  foreach (var msg in messagesToProcess)
                                  {
                                      if (token.IsCancellationRequested) break;
+
+                                     if (!string.IsNullOrEmpty(msg.Id))
+                                     {
+                                         lock (_displayedMessageIds)
+                                         {
+                                             if (_displayedMessageIds.Contains(msg.Id))
+                                                 continue;
+                                             _displayedMessageIds.Add(msg.Id);
+                                         }
+                                     }
 
                                      bool isOwnMessage = !string.IsNullOrEmpty(_chatOptions.MyChatUsername) && 
                                                          (msg.SenderId == _chatOptions.MyChatUsername || msg.SenderName == _chatOptions.MyChatUsername);
