@@ -858,11 +858,16 @@ namespace VSIXGoogleChat
 
                             await Application.Current.Dispatcher.InvokeAsync(() =>
                             {
-                                // Apply unread formatting to the space name
-                                if (_baseSpaceNames.TryGetValue(space.Id, out string baseName))
+                                // Apply unread formatting to the active bound space
+                                var boundSpaces = SpaceSelector.ItemsSource as System.Collections.Generic.IEnumerable<ChatSpace>;
+                                if (boundSpaces != null)
                                 {
-                                    space.Name = $"● {baseName} ({_unreadCountPerSpace[space.Id]})";
-                                    SpaceSelector.Items.Refresh();
+                                    var boundSpace = boundSpaces.FirstOrDefault(s => s.Id == space.Id);
+                                    if (boundSpace != null && _baseSpaceNames.TryGetValue(space.Id, out string baseName))
+                                    {
+                                        boundSpace.Name = $"● {baseName} ({_unreadCountPerSpace[space.Id]})";
+                                        SpaceSelector.Items.Refresh();
+                                    }
                                 }
                                 StartSpaceSelectorBlinking();
                             });

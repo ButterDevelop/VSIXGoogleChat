@@ -29,10 +29,25 @@ namespace VSIXGoogleChat.Services
         public string Text { get; set; } = "";
     }
 
-    public class ChatSpace
+    public class ChatSpace : System.ComponentModel.INotifyPropertyChanged
     {
         public string Id { get; set; } = "";
-        public string Name { get; set; } = "";
+        
+        private string _name = "";
+        public string Name
+        {
+            get => _name;
+            set
+            {
+                if (_name != value)
+                {
+                    _name = value;
+                    PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Name)));
+                }
+            }
+        }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     }
 
     public class ChatAttachment
