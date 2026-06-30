@@ -456,13 +456,17 @@ namespace VSIXGoogleChat
             }
             _pollingTask = null;
 
-            // Actually wait for the old task to finish so it doesn't race with the new one
+            // Await the old task on a background thread to prevent UI thread deadlock
             if (taskToWait != null)
             {
-                try { await taskToWait.ConfigureAwait(false); }
-                catch (OperationCanceledException) { }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"StopPolling wait error: {ex.Message}"); }
+                _ = Task.Run(async () =>
+                {
+                    try { await taskToWait.ConfigureAwait(false); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"StopPolling wait error: {ex.Message}"); }
+                });
             }
+            await Task.CompletedTask;
         }
 
 

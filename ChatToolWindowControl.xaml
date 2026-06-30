@@ -84,7 +84,13 @@
                                 <Setter.Value>
                                     <ControlTemplate TargetType="ComboBox">
                                         <Grid>
-                                            <ToggleButton x:Name="ToggleButton" 
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <ToggleButton Grid.ColumnSpan="2"
+                                                          x:Name="ToggleButton" 
                                                           Focusable="false"
                                                           IsChecked="{Binding Path=IsDropDownOpen,Mode=TwoWay,RelativeSource={RelativeSource TemplatedParent}}"
                                                           ClickMode="Press"
@@ -92,8 +98,8 @@
                                                 <ToggleButton.Template>
                                                     <ControlTemplate TargetType="ToggleButton">
                                                         <Border Background="Transparent" Padding="4,0">
-                                                            <!-- Subtle down arrow -->
-                                                            <Path x:Name="Arrow" Fill="#5A826B" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 3.5 4 L 7 0 Z"/>
+                                                            <!-- Subtle down arrow on the far right -->
+                                                            <Path x:Name="Arrow" Fill="#5A826B" HorizontalAlignment="Right" VerticalAlignment="Center" Data="M 0 0 L 3.5 4 L 7 0 Z" Margin="0,0,2,0"/>
                                                         </Border>
                                                         <ControlTemplate.Triggers>
                                                             <Trigger Property="IsMouseOver" Value="true">
@@ -103,8 +109,16 @@
                                                     </ControlTemplate>
                                                 </ToggleButton.Template>
                                             </ToggleButton>
+
+                                            <ContentPresenter Grid.Column="0" 
+                                                              IsHitTestVisible="False" 
+                                                              Content="{TemplateBinding SelectionBoxItem}" 
+                                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" 
+                                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" 
+                                                              Margin="0,0,15,0" 
+                                                              VerticalAlignment="Center" />
                                             
-                                            <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                            <Popup Name="Popup" Grid.ColumnSpan="2" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                                                 <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="180" MaxHeight="300" Margin="0,2,0,0">
                                                     <Border x:Name="DropDownBorder" Background="#252526" BorderThickness="1" BorderBrush="#3E3E42" CornerRadius="3">
                                                         <Border.Effect>
